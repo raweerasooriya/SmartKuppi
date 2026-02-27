@@ -43,7 +43,7 @@ smartkuppi-platform/
 ### Installation
 
 1. Clone the repository
-git clone 
+git clone  https://github.com/raweerasooriya/SmartKuppi.git
 cd SmartKuppi
 
 2. Install Backend Dependencies
