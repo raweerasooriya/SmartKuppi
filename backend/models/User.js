@@ -1,7 +1,9 @@
+// models/User.js
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
 const userSchema = new mongoose.Schema({
+  // Common fields for all users
   name: {
     type: String,
     required: [true, 'Please add a name'],
@@ -23,6 +25,10 @@ const userSchema = new mongoose.Schema({
     minlength: 6,
     select: false
   },
+  phone: {
+    type: String,
+    required: [true, 'Please add a phone number']
+  },
   role: {
     type: String,
     enum: ['student', 'tutor', 'admin'],
@@ -31,20 +37,63 @@ const userSchema = new mongoose.Schema({
   status: {
     type: String,
     enum: ['pending', 'approved', 'suspended'],
-    default: 'pending'
+    default: function() {
+      // Tutors start as pending, others are approved
+      return this.role === 'tutor' ? 'pending' : 'approved';
+    }
   },
   profilePicture: {
     type: String,
     default: 'default.jpg'
   },
-  bio: {
-    type: String,
-    maxlength: 500
-  },
   createdAt: {
     type: Date,
     default: Date.now
-  }
+  },
+  
+  // Student specific fields
+  studentId: {
+    type: String,
+    unique: true,
+    sparse: true, // Allows null/undefined values for non-students
+    required: function() { return this.role === 'student'; }
+  },
+  university: {
+    type: String,
+    required: function() { return this.role === 'student'; }
+  },
+  faculty: {
+    type: String,
+    required: function() { return this.role === 'student'; }
+  },
+  department: String,
+  academicYear: {
+    type: String,
+    required: function() { return this.role === 'student'; }
+  },
+  
+  // Tutor specific fields
+  qualifications: {
+    type: String,
+    required: function() { return this.role === 'tutor'; }
+  },
+  specialization: {
+    type: String,
+    required: function() { return this.role === 'tutor'; }
+  },
+  yearsOfExperience: {
+    type: Number,
+    required: function() { return this.role === 'tutor'; }
+  },
+  bio: {
+    type: String,
+    maxlength: 500,
+    required: function() { return this.role === 'tutor'; }
+  },
+  linkedin: String,
+  subjects: [{
+    type: String
+  }]
 }, {
   timestamps: true
 });

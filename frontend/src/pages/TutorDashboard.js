@@ -1,51 +1,151 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Layout, Users, BookOpen, Calendar, 
   Bell, Clock, BarChart3, 
   Plus, ArrowUpRight, 
   Video, MessageSquare, DollarSign, 
   Settings, LogOut, Menu, X, FileText,
-  Search, Star, AlertCircle
+  Search, Star, AlertCircle, ChevronDown,
+  Mail, Phone, Award, CheckCircle, XCircle,
+  GraduationCap
 } from 'lucide-react';
+
+const API_BASE_URL = 'http://localhost:5000/api';
 
 const TutorDashboard = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [profileDropdown, setProfileDropdown] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [tutor, setTutor] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [tutorStatus, setTutorStatus] = useState('approved');
+  const [stats, setStats] = useState({
+    totalStudents: 0,
+    activeLessons: 0,
+    totalResources: 0,
+    rating: 0
+  });
+  const [upcomingLessons, setUpcomingLessons] = useState([]);
+  const [recentResources, setRecentResources] = useState([]);
+  const [studentFeedback, setStudentFeedback] = useState([]);
+  
   const navigate = useNavigate();
 
-  // Mock tutor status (approved, pending, suspended)
-  const [tutorStatus] = useState('approved'); // Simplified type
+  useEffect(() => {
+    const userData = localStorage.getItem('user');
+    const token = localStorage.getItem('token');
+    
+    if (!userData || !token) {
+      navigate('/login');
+      return;
+    }
+    
+    try {
+      const parsedUser = JSON.parse(userData);
+      
+      // Check if user is tutor
+      if (parsedUser.role !== 'tutor') {
+        navigate('/');
+        return;
+      }
+      
+      setTutor(parsedUser);
+      setTutorStatus(parsedUser.status);
+      
+      // Only fetch dashboard data if tutor is approved
+      if (parsedUser.status === 'approved') {
+        fetchDashboardData(parsedUser.id, token);
+      } else {
+        setLoading(false);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      navigate('/login');
+    }
+  }, [navigate]);
+
+  const fetchDashboardData = async (tutorId, token) => {
+    setLoading(true);
+    try {
+      const [statsRes, lessonsRes, resourcesRes, feedbackRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/tutors/${tutorId}/stats`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }),
+        fetch(`${API_BASE_URL}/tutors/${tutorId}/upcoming-lessons`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }),
+        fetch(`${API_BASE_URL}/tutors/${tutorId}/recent-resources`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }),
+        fetch(`${API_BASE_URL}/tutors/${tutorId}/feedback`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+      ]);
+
+      const statsData = await statsRes.json();
+      const lessonsData = await lessonsRes.json();
+      const resourcesData = await resourcesRes.json();
+      const feedbackData = await feedbackRes.json();
+
+      if (statsData.success) setStats(statsData.data);
+      if (lessonsData.success) setUpcomingLessons(lessonsData.data);
+      if (resourcesData.success) setRecentResources(resourcesData.data);
+      if (feedbackData.success) setStudentFeedback(feedbackData.data);
+
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+      setMockData();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const setMockData = () => {
+    setStats({
+      totalStudents: 156,
+      activeLessons: 8,
+      totalResources: 45,
+      rating: 4.8
+    });
+
+    setUpcomingLessons([
+      { id: 1, title: 'Advanced JavaScript', student: 'John Doe', date: '2024-01-20', time: '10:00 AM', students: 12, status: 'confirmed' },
+      { id: 2, title: 'React Hooks Workshop', student: 'Sarah Smith', date: '2024-01-21', time: '2:00 PM', students: 8, status: 'confirmed' },
+      { id: 3, title: 'Database Design', student: 'Mike Johnson', date: '2024-01-22', time: '11:00 AM', students: 15, status: 'pending' },
+    ]);
+
+    setRecentResources([
+      { id: 1, title: 'JavaScript Cheat Sheet.pdf', type: 'PDF', downloads: 45, uploaded: '2 days ago' },
+      { id: 2, title: 'React Component Patterns', type: 'Video', downloads: 32, uploaded: '3 days ago' },
+      { id: 3, title: 'Database Normalization Notes', type: 'PDF', downloads: 28, uploaded: '5 days ago' },
+    ]);
+
+    setStudentFeedback([
+      { id: 1, student: 'Amal Perera', rating: 5, comment: 'Great explanation! Very helpful.', date: 'Yesterday' },
+      { id: 2, student: 'Nimali Silva', rating: 4, comment: 'Good session, but could be more interactive.', date: '2 days ago' },
+      { id: 3, student: 'Kasun Fernando', rating: 5, comment: 'Best tutor I\'ve had!', date: '3 days ago' },
+    ]);
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('user');
+    localStorage.removeItem('token');
     navigate('/login');
   };
 
-  const stats = [
-    { title: 'Total Students', value: '156', change: '+12 this month', icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' },
-    { title: 'Active Lessons', value: '8', change: 'This week', icon: Video, color: 'text-indigo-600', bg: 'bg-indigo-50' },
-    { title: 'Resources', value: '45', change: '+5 new', icon: FileText, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-    { title: 'Rating', value: '4.8', change: '⭐ 4.8/5', icon: Star, color: 'text-amber-600', bg: 'bg-amber-50' },
-  ];
+  const getInitials = (name) => {
+    if (!name) return 'T';
+    return name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
+  };
 
-  const upcomingLessons = [
-    { id: 1, title: 'Advanced JavaScript', student: 'John Doe', date: '2024-01-20', time: '10:00 AM', students: 12, status: 'confirmed' },
-    { id: 2, title: 'React Hooks Workshop', student: 'Sarah Smith', date: '2024-01-21', time: '2:00 PM', students: 8, status: 'confirmed' },
-    { id: 3, title: 'Database Design', student: 'Mike Johnson', date: '2024-01-22', time: '11:00 AM', students: 15, status: 'pending' },
-  ];
-
-  const recentResources = [
-    { id: 1, title: 'JavaScript Cheat Sheet.pdf', type: 'PDF', downloads: 45, uploaded: '2 days ago' },
-    { id: 2, title: 'React Component Patterns', type: 'Video', downloads: 32, uploaded: '3 days ago' },
-    { id: 3, title: 'Database Normalization Notes', type: 'PDF', downloads: 28, uploaded: '5 days ago' },
-  ];
-
-  const studentFeedback = [
-    { id: 1, student: 'Amal Perera', rating: 5, comment: 'Great explanation! Very helpful.', date: 'Yesterday' },
-    { id: 2, student: 'Nimali Silva', rating: 4, comment: 'Good session, but could be more interactive.', date: '2 days ago' },
-    { id: 3, student: 'Kasun Fernando', rating: 5, comment: 'Best tutor I\'ve had!', date: '3 days ago' },
-  ];
+  const getTimeOfDay = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Morning';
+    if (hour < 18) return 'Afternoon';
+    return 'Evening';
+  };
 
   // If tutor status is pending
   if (tutorStatus === 'pending') {
@@ -106,21 +206,46 @@ const TutorDashboard = () => {
     );
   }
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-brand-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-slate-600 font-medium">Loading your dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const statCards = [
+    { title: 'Total Students', value: stats.totalStudents, change: '+12 this month', icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' },
+    { title: 'Active Lessons', value: stats.activeLessons, change: 'This week', icon: Video, color: 'text-indigo-600', bg: 'bg-indigo-50' },
+    { title: 'Resources', value: stats.totalResources, change: '+5 new', icon: FileText, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+    { title: 'Rating', value: stats.rating.toFixed(1), change: `⭐ ${stats.rating}/5`, icon: Star, color: 'text-amber-600', bg: 'bg-amber-50' },
+  ];
+
   return (
     <div className="flex min-h-screen bg-slate-50 font-sans">
       {/* Sidebar */}
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 text-slate-300 transition-transform duration-300 lg:translate-x-0 lg:static ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex flex-col h-full">
           <div className="h-20 flex items-center px-6 border-b border-slate-800">
-            <Link to="/tutor-dashboard" className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-brand-500 rounded-lg flex items-center justify-center text-white">
-                <BookOpen className="h-5 w-5" />
+            <Link to="/tutor-dashboard" className="flex items-center space-x-3">
+              <div className="w-10 h-10 bg-brand-500 rounded-xl flex items-center justify-center text-white shadow-lg shadow-brand-500/20">
+                <GraduationCap className="h-6 w-6" />
               </div>
-              <span className="font-bold text-xl text-white">Smart<span className="text-brand-400">Kuppi</span></span>
+              <div className="flex flex-col">
+                <span className="font-bold text-xl text-white tracking-tight">Smart<span className="text-brand-400">Kuppi</span></span>
+                <span className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold">Tutor Portal</span>
+              </div>
             </Link>
+            <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden text-slate-400 hover:text-white">
+              <X className="h-6 w-6" />
+            </button>
           </div>
 
           <nav className="flex-1 p-4 space-y-1">
+            <p className="px-2 mb-2 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Tutor Menu</p>
             <Link to="/tutor-dashboard" className="flex items-center space-x-3 px-4 py-3 bg-brand-500/10 text-brand-400 rounded-xl font-medium">
               <Layout className="h-5 w-5" />
               <span>Dashboard</span>
@@ -169,19 +294,61 @@ const TutorDashboard = () => {
           </div>
 
           <div className="flex items-center space-x-4">
-            <button className="p-2 text-slate-500 hover:bg-slate-100 rounded-xl relative transition-colors">
+            <button 
+              onClick={() => setNotificationsOpen(!notificationsOpen)}
+              className="p-2 text-slate-500 hover:bg-slate-100 rounded-xl relative transition-colors"
+            >
               <Bell className="h-5 w-5" />
               <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full border-2 border-white"></span>
             </button>
             <div className="h-8 w-px bg-slate-200 mx-1"></div>
-            <div className="flex items-center space-x-3">
-              <div className="text-right hidden sm:block">
-                <p className="text-sm font-bold text-slate-900">Dr. Kamal Perera</p>
-                <p className="text-xs text-slate-500">Verified Tutor</p>
-              </div>
-              <div className="w-10 h-10 rounded-xl bg-brand-500 flex items-center justify-center text-white font-bold">
-                KP
-              </div>
+            
+            <div className="relative">
+              <button 
+                onClick={() => setProfileDropdown(!profileDropdown)}
+                className="flex items-center space-x-3 p-1.5 hover:bg-slate-100 rounded-xl transition-colors"
+              >
+                <div className="w-8 h-8 rounded-lg bg-brand-500 flex items-center justify-center text-white font-bold text-xs">
+                  {tutor ? getInitials(tutor.name) : 'T'}
+                </div>
+                <span className="hidden md:block text-sm font-medium text-slate-700">{tutor?.name || 'Tutor'}</span>
+                <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${profileDropdown ? 'rotate-180' : ''}`} />
+              </button>
+
+              <AnimatePresence>
+                {profileDropdown && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 10 }}
+                    className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 z-50"
+                  >
+                    <div className="px-4 py-3 border-b border-slate-50">
+                      <p className="text-sm font-semibold text-slate-800">{tutor?.name || 'Tutor User'}</p>
+                      <p className="text-xs text-slate-500">{tutor?.email || 'tutor@example.com'}</p>
+                    </div>
+                    <div className="p-1">
+                      <button className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-xl transition-colors">
+                        <Users className="h-4 w-4" />
+                        <span>My Profile</span>
+                      </button>
+                      <button className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-xl transition-colors">
+                        <Settings className="h-4 w-4" />
+                        <span>Account Settings</span>
+                      </button>
+                    </div>
+                    <div className="p-1 border-t border-slate-50">
+                      <button 
+                        onClick={handleLogout}
+                        className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-rose-600 hover:bg-rose-50 rounded-xl transition-colors"
+                      >
+                        <LogOut className="h-4 w-4" />
+                        <span>Sign Out</span>
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </div>
         </header>
@@ -194,7 +361,7 @@ const TutorDashboard = () => {
                 animate={{ opacity: 1, y: 0 }}
                 className="max-w-7xl mx-auto space-y-8"
               >
-                {/* Header Section - FIXED: Using standard Tailwind gradient classes */}
+                {/* Header Section */}
                 <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 rounded-3xl p-8 text-white relative overflow-hidden shadow-xl shadow-indigo-500/20">
                   <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
                     <div>
@@ -205,8 +372,11 @@ const TutorDashboard = () => {
                         <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse"></span>
                         <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-400">Live Status: Active</span>
                       </div>
-                      <h2 className="text-3xl font-bold tracking-tight">Good Morning, Kamal! 👋</h2>
-                      <p className="text-indigo-100 mt-2 max-w-md font-medium opacity-90">You have 2 lessons scheduled for today. Your average rating is 4.9/5.0. Keep up the great work!</p>
+                      <h2 className="text-3xl font-bold tracking-tight">Good {getTimeOfDay()}, {tutor?.name?.split(' ')[0] || 'Tutor'}! 👋</h2>
+                      <p className="text-indigo-100 mt-2 max-w-md font-medium opacity-90">
+                        You have {upcomingLessons.length} lessons scheduled for today. 
+                        Your average rating is {stats.rating.toFixed(1)}/5.0. Keep up the great work!
+                      </p>
                     </div>
                     <div className="flex items-center space-x-4">
                       <button className="flex items-center space-x-2 px-6 py-3 bg-white text-indigo-600 rounded-xl font-bold hover:bg-indigo-50 transition-all shadow-lg shadow-indigo-500/20 group">
@@ -223,7 +393,7 @@ const TutorDashboard = () => {
 
                 {/* Stats Grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                  {stats.map((stat, i) => {
+                  {statCards.map((stat, i) => {
                     const Icon = stat.icon;
                     return (
                       <div key={i} className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
@@ -253,35 +423,41 @@ const TutorDashboard = () => {
                       <button className="text-indigo-600 text-sm font-bold hover:underline">View Full Schedule</button>
                     </div>
                     <div className="divide-y divide-slate-50">
-                      {upcomingLessons.map((lesson) => (
-                        <div key={lesson.id} className="p-6 flex items-center justify-between hover:bg-slate-50 transition-colors group">
-                          <div className="flex items-center space-x-4">
-                            <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-600 font-bold text-xl group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
-                              {lesson.student.charAt(0)}
-                            </div>
-                            <div>
-                              <div className="flex items-center space-x-2">
-                                <h4 className="font-bold text-slate-900 text-lg">{lesson.title}</h4>
-                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
-                                  lesson.status === 'confirmed' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'
-                                }`}>
-                                  {lesson.status}
-                                </span>
+                      {upcomingLessons.length > 0 ? (
+                        upcomingLessons.map((lesson) => (
+                          <div key={lesson.id} className="p-6 flex items-center justify-between hover:bg-slate-50 transition-colors group">
+                            <div className="flex items-center space-x-4">
+                              <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-600 font-bold text-xl group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
+                                {lesson.student?.charAt(0) || 'S'}
                               </div>
-                              <p className="text-sm text-slate-500 mt-0.5">
-                                Student: <span className="font-medium text-slate-700">{lesson.student}</span> • {lesson.students} enrolled
-                              </p>
+                              <div>
+                                <div className="flex items-center space-x-2">
+                                  <h4 className="font-bold text-slate-900 text-lg">{lesson.title}</h4>
+                                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                                    lesson.status === 'confirmed' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'
+                                  }`}>
+                                    {lesson.status}
+                                  </span>
+                                </div>
+                                <p className="text-sm text-slate-500 mt-0.5">
+                                  Student: <span className="font-medium text-slate-700">{lesson.student}</span> • {lesson.students} enrolled
+                                </p>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-sm font-bold text-slate-900">{lesson.time}</p>
+                              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{lesson.date}</p>
+                              <button className="mt-3 px-4 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700 transition-all shadow-md shadow-indigo-600/10">
+                                Join Session
+                              </button>
                             </div>
                           </div>
-                          <div className="text-right">
-                            <p className="text-sm font-bold text-slate-900">{lesson.time}</p>
-                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{lesson.date}</p>
-                            <button className="mt-3 px-4 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700 transition-all shadow-md shadow-indigo-600/10">
-                              Join Session
-                            </button>
-                          </div>
+                        ))
+                      ) : (
+                        <div className="p-12 text-center">
+                          <p className="text-slate-500">No upcoming lessons</p>
                         </div>
-                      ))}
+                      )}
                     </div>
                   </div>
 
@@ -292,24 +468,28 @@ const TutorDashboard = () => {
                       <h3 className="font-bold text-slate-900">Student Feedback</h3>
                     </div>
                     <div className="space-y-6">
-                      {studentFeedback.map((feedback) => (
-                        <div key={feedback.id} className="space-y-2 group">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">{feedback.student}</span>
-                            <div className="flex text-amber-400">
-                              {[...Array(5)].map((_, i) => (
-                                <Star key={i} className={`h-3 w-3 ${i < feedback.rating ? 'fill-current' : 'text-slate-200'}`} />
-                              ))}
+                      {studentFeedback.length > 0 ? (
+                        studentFeedback.map((feedback) => (
+                          <div key={feedback.id} className="space-y-2 group">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">{feedback.student}</span>
+                              <div className="flex text-amber-400">
+                                {[...Array(5)].map((_, i) => (
+                                  <Star key={i} className={`h-3 w-3 ${i < feedback.rating ? 'fill-current' : 'text-slate-200'}`} />
+                                ))}
+                              </div>
                             </div>
+                            <div className="relative">
+                              <p className="text-sm text-slate-600 italic leading-relaxed pl-4 border-l-2 border-slate-100 group-hover:border-indigo-200 transition-colors">
+                                "{feedback.comment}"
+                              </p>
+                            </div>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest pt-1">{feedback.date}</p>
                           </div>
-                          <div className="relative">
-                            <p className="text-sm text-slate-600 italic leading-relaxed pl-4 border-l-2 border-slate-100 group-hover:border-indigo-200 transition-colors">
-                              "{feedback.comment}"
-                            </p>
-                          </div>
-                          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest pt-1">{feedback.date}</p>
-                        </div>
-                      ))}
+                        ))
+                      ) : (
+                        <p className="text-slate-500 text-center py-4">No feedback yet</p>
+                      )}
                     </div>
                     <button className="w-full mt-6 py-3 bg-slate-50 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-100 transition-colors border border-slate-100">
                       View All Feedback
@@ -325,20 +505,26 @@ const TutorDashboard = () => {
                       <button className="text-indigo-600 text-sm font-bold">View All</button>
                     </div>
                     <div className="divide-y divide-slate-50">
-                      {recentResources.map((resource) => (
-                        <div key={resource.id} className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
-                          <div className="flex items-center space-x-3">
-                            <div className="p-2 bg-slate-100 rounded-xl text-slate-600">
-                              <FileText className="h-4 w-4" />
+                      {recentResources.length > 0 ? (
+                        recentResources.map((resource) => (
+                          <div key={resource.id} className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
+                            <div className="flex items-center space-x-3">
+                              <div className="p-2 bg-slate-100 rounded-xl text-slate-600">
+                                <FileText className="h-4 w-4" />
+                              </div>
+                              <div>
+                                <p className="text-sm font-bold text-slate-900">{resource.title}</p>
+                                <p className="text-[10px] text-slate-500">{resource.downloads} downloads • {resource.uploaded}</p>
+                              </div>
                             </div>
-                            <div>
-                              <p className="text-sm font-bold text-slate-900">{resource.title}</p>
-                              <p className="text-[10px] text-slate-500">{resource.downloads} downloads • {resource.uploaded}</p>
-                            </div>
+                            <button className="text-xs font-bold text-indigo-600">View</button>
                           </div>
-                          <button className="text-xs font-bold text-indigo-600">View</button>
+                        ))
+                      ) : (
+                        <div className="p-8 text-center">
+                          <p className="text-slate-500">No resources yet</p>
                         </div>
-                      ))}
+                      )}
                     </div>
                   </div>
 

@@ -2,6 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const cors = require('cors');
+const adminRoutes = require('./routes/adminRoutes');
 
 // Load env vars
 dotenv.config();
@@ -29,6 +30,7 @@ app.use(cors({
 
 // Mount routers
 app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Base route
 app.get('/', (req, res) => {

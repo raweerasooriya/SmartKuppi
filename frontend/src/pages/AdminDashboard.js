@@ -1,41 +1,191 @@
 import React, { useState, useEffect } from 'react';
-
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';  // Added AnimatePresence
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Menu, X, ChevronDown, LogOut, Settings, 
   Layout, Users, BookOpen, Calendar, MessageCircle, 
   Bell, TrendingUp, CheckCircle, XCircle, Clock,
   BarChart3, FileText, Shield, Award, Mail, Phone,
   Search, Plus, Filter, MoreVertical, ArrowUpRight,
-  Activity, Database, HardDrive, Cpu
+  Activity, Database, HardDrive, Cpu, UserCheck
 } from 'lucide-react';
+
+const API_BASE_URL = 'http://localhost:5000/api';
 
 const AdminDashboard = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [profileDropdown, setProfileDropdown] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [admin, setAdmin] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({
+    totalUsers: 0,
+    pendingTutors: 0,
+    totalResources: 0,
+    activeLessons: 0
+  });
+  const [pendingApprovals, setPendingApprovals] = useState([]);
+  const [recentActivities, setRecentActivities] = useState([]);
+  const [actionLoading, setActionLoading] = useState(false);
+  
   const navigate = useNavigate();
   const location = useLocation();
+
+  useEffect(() => {
+    const userData = localStorage.getItem('user');
+    const token = localStorage.getItem('token');
+    
+    if (!userData || !token) {
+      navigate('/login');
+      return;
+    }
+    
+    try {
+      const parsedUser = JSON.parse(userData);
+      if (parsedUser.role !== 'admin') {
+        navigate('/');
+        return;
+      }
+      setAdmin(parsedUser);
+      fetchDashboardData(token);
+    } catch (error) {
+      console.error('Error:', error);
+      navigate('/login');
+    }
+  }, [navigate]);
+
+  const fetchDashboardData = async (token) => {
+    setLoading(true);
+    try {
+      const [statsRes, pendingRes, activitiesRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/admin/stats`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }),
+        fetch(`${API_BASE_URL}/admin/tutors?status=pending`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }),
+        fetch(`${API_BASE_URL}/admin/recent-activities`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+      ]);
+
+      const statsData = await statsRes.json();
+      const pendingData = await pendingRes.json();
+      const activitiesData = await activitiesRes.json();
+
+      if (statsData.success) setStats(statsData.data);
+      if (pendingData.success) setPendingApprovals(pendingData.data);
+      if (activitiesData.success) setRecentActivities(activitiesData.data);
+
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+      setMockData();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleTutorAction = async (tutorId, action) => {
+    setActionLoading(true);
+    const token = localStorage.getItem('token');
+    
+    try {
+      const status = action === 'approve' ? 'approved' : 'suspended';
+      
+      const response = await fetch(`${API_BASE_URL}/admin/update-tutor-status/${tutorId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ status })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setPendingApprovals(pendingApprovals.filter(t => t._id !== tutorId));
+        setStats(prev => ({
+          ...prev,
+          pendingTutors: prev.pendingTutors - 1
+        }));
+      }
+    } catch (error) {
+      console.error('Error updating tutor:', error);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const setMockData = () => {
+    setStats({
+      totalUsers: 1234,
+      pendingTutors: 23,
+      totalResources: 856,
+      activeLessons: 128
+    });
+
+    setPendingApprovals([
+      { 
+        _id: '1', 
+        name: 'Dr. Kamal Perera', 
+        qualifications: 'PhD in Computer Science', 
+        subjects: ['Programming', 'Database'], 
+        createdAt: new Date().toISOString(),
+        email: 'kamal@example.com'
+      },
+      { 
+        _id: '2', 
+        name: 'Ms. Nimali Silva', 
+        qualifications: 'M.Sc. in Mathematics', 
+        subjects: ['Algebra', 'Calculus'], 
+        createdAt: new Date().toISOString(),
+        email: 'nimali@example.com'
+      }
+    ]);
+
+    setRecentActivities([
+      { 
+        _id: '1', 
+        user: 'John Doe', 
+        action: 'Uploaded new resource', 
+        time: '5 min ago', 
+        type: 'resource', 
+        icon: FileText, 
+        color: 'text-emerald-500' 
+      }
+    ]);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('user');
+    localStorage.removeItem('token');
+    navigate('/login');
+  };
+
+  const getInitials = (name) => {
+    if (!name) return 'A';
+    return name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
+  };
 
   const navLinks = [
     { name: 'Dashboard', path: '/admin-dashboard', icon: Layout },
     { name: 'User Management', path: '/admin/users', icon: Users },
-    { name: 'Tutor Approvals', path: '/admin/approvals', icon: CheckCircle, badge: 4 },
+    { 
+      name: 'Tutor Approvals', 
+      path: '/admin/tutor-approvals', 
+      icon: UserCheck, 
+      badge: stats.pendingTutors 
+    },
     { name: 'Resources', path: '/admin/resources', icon: BookOpen },
     { name: 'Analytics', path: '/admin/analytics', icon: BarChart3 },
     { name: 'Settings', path: '/admin/settings', icon: Settings },
   ];
 
-  const handleLogout = () => {
-    localStorage.removeItem('user');
-    navigate('/login');
-  };
-
-  const stats = [
+  const statCards = [
     { 
       title: 'Total Users', 
-      value: '1,234', 
+      value: stats.totalUsers, 
       change: '+12.5%', 
       isPositive: true,
       icon: Users,
@@ -44,7 +194,7 @@ const AdminDashboard = () => {
     },
     { 
       title: 'Pending Tutors', 
-      value: '23', 
+      value: stats.pendingTutors, 
       change: '+5 new', 
       isPositive: true,
       icon: Clock,
@@ -53,7 +203,7 @@ const AdminDashboard = () => {
     },
     { 
       title: 'Total Resources', 
-      value: '856', 
+      value: stats.totalResources, 
       change: '+34', 
       isPositive: true,
       icon: BookOpen,
@@ -62,7 +212,7 @@ const AdminDashboard = () => {
     },
     { 
       title: 'Active Lessons', 
-      value: '128', 
+      value: stats.activeLessons, 
       change: '-2.4%', 
       isPositive: false,
       icon: Calendar,
@@ -71,26 +221,23 @@ const AdminDashboard = () => {
     },
   ];
 
-  const pendingApprovals = [
-    { id: 1, name: 'Dr. Kamal Perera', qualifications: 'PhD in Computer Science', subjects: ['Programming', 'Database'], appliedDate: '2024-01-15', avatar: 'KP' },
-    { id: 2, name: 'Ms. Nimali Silva', qualifications: 'M.Sc. in Mathematics', subjects: ['Algebra', 'Calculus'], appliedDate: '2024-01-14', avatar: 'NS' },
-    { id: 3, name: 'Mr. Sunil Fernando', qualifications: 'B.Sc. in Physics', subjects: ['Physics', 'Mechanics'], appliedDate: '2024-01-13', avatar: 'SF' },
-    { id: 4, name: 'Mrs. Kumari Weerasinghe', qualifications: 'MBA, B.Com', subjects: ['Economics', 'Business'], appliedDate: '2024-01-12', avatar: 'KW' },
-  ];
-
-  const recentActivities = [
-    { id: 1, user: 'John Doe', action: 'Uploaded new resource', time: '5 min ago', type: 'resource', icon: FileText, color: 'text-emerald-500' },
-    { id: 2, user: 'Dr. Smith', action: 'Created new lesson', time: '15 min ago', type: 'lesson', icon: Calendar, color: 'text-blue-500' },
-    { id: 3, user: 'Sarah Johnson', action: 'Registered as tutor', time: '1 hour ago', type: 'registration', icon: Users, color: 'text-amber-500' },
-    { id: 4, user: 'Mike Peters', action: 'Reported issue', time: '2 hours ago', type: 'report', icon: Shield, color: 'text-rose-500' },
-  ];
-
   const systemHealth = [
     { name: 'Server Status', value: 'Healthy', icon: Cpu, status: 'success' },
     { name: 'Database', value: 'Connected', icon: Database, status: 'success' },
     { name: 'Storage', value: '64% Used', icon: HardDrive, status: 'warning' },
     { name: 'Active Sessions', value: '342', icon: Activity, status: 'info' },
   ];
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-brand-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-slate-600 font-medium">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen bg-slate-50 font-sans">
@@ -107,7 +254,7 @@ const AdminDashboard = () => {
               </div>
               <div className="flex flex-col">
                 <span className="font-bold text-xl text-white tracking-tight">Smart<span className="text-brand-400">Kuppi</span></span>
-                <span className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold">Admin Engine</span>
+                <span className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold">Admin Panel</span>
               </div>
             </Link>
             <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden text-slate-400 hover:text-white">
@@ -135,7 +282,7 @@ const AdminDashboard = () => {
                     <Icon className={`h-5 w-5 ${isActive ? 'text-brand-400' : 'text-slate-500 group-hover:text-slate-300'}`} />
                     <span>{link.name}</span>
                   </div>
-                  {link.badge && (
+                  {link.badge > 0 && (
                     <span className="px-2 py-0.5 text-[10px] font-bold bg-brand-500 text-white rounded-full">
                       {link.badge}
                     </span>
@@ -149,11 +296,11 @@ const AdminDashboard = () => {
           <div className="p-4 border-t border-slate-800">
             <div className="bg-slate-800/50 rounded-2xl p-4">
               <div className="flex items-center space-x-3 mb-3">
-                <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center text-white font-bold border border-slate-600">
-                  A
+                <div className="w-10 h-10 rounded-full bg-brand-500 flex items-center justify-center text-white font-bold border border-brand-400">
+                  {admin ? getInitials(admin.name) : 'A'}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-white truncate">Admin User</p>
+                  <p className="text-sm font-medium text-white truncate">{admin?.name || 'Admin User'}</p>
                   <p className="text-xs text-slate-500 truncate">Super Administrator</p>
                 </div>
               </div>
@@ -210,9 +357,9 @@ const AdminDashboard = () => {
                 className="flex items-center space-x-2 p-1.5 hover:bg-slate-100 rounded-xl transition-colors"
               >
                 <div className="w-8 h-8 rounded-lg bg-brand-500 flex items-center justify-center text-white font-bold text-xs">
-                  AD
+                  {admin ? getInitials(admin.name) : 'AD'}
                 </div>
-                <span className="hidden md:block text-sm font-medium text-slate-700">Admin</span>
+                <span className="hidden md:block text-sm font-medium text-slate-700">{admin?.name || 'Admin'}</span>
                 <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${profileDropdown ? 'rotate-180' : ''}`} />
               </button>
 
@@ -225,8 +372,8 @@ const AdminDashboard = () => {
                     className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 z-50"
                   >
                     <div className="px-4 py-3 border-b border-slate-50">
-                      <p className="text-sm font-semibold text-slate-800">Admin User</p>
-                      <p className="text-xs text-slate-500">admin@smartkuppi.com</p>
+                      <p className="text-sm font-semibold text-slate-800">{admin?.name || 'Admin User'}</p>
+                      <p className="text-xs text-slate-500">{admin?.email || 'admin@smartkuppi.com'}</p>
                     </div>
                     <div className="p-1">
                       <button className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-xl transition-colors">
@@ -265,23 +412,31 @@ const AdminDashboard = () => {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
                 <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">Dashboard Overview</h1>
-                <p className="text-slate-500 mt-1">Welcome back, Admin. Here's what's happening today.</p>
+                <p className="text-slate-500 mt-1">Welcome back, {admin?.name?.split(' ')[0] || 'Admin'}. Here's what's happening today.</p>
               </div>
               <div className="flex items-center space-x-3">
                 <button className="flex items-center space-x-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors shadow-sm">
                   <Filter className="h-4 w-4" />
                   <span>Filter</span>
                 </button>
-                <button className="flex items-center space-x-2 px-4 py-2 bg-brand-600 text-white rounded-xl text-sm font-semibold hover:bg-brand-700 transition-all shadow-md shadow-brand-500/20">
-                  <Plus className="h-4 w-4" />
-                  <span>New Action</span>
-                </button>
+                <Link 
+                  to="/admin/tutor-approvals"
+                  className="flex items-center space-x-2 px-4 py-2 bg-brand-600 text-white rounded-xl text-sm font-semibold hover:bg-brand-700 transition-all shadow-md shadow-brand-500/20"
+                >
+                  <UserCheck className="h-4 w-4" />
+                  <span>Review Approvals</span>
+                  {stats.pendingTutors > 0 && (
+                    <span className="ml-1 px-2 py-0.5 bg-white text-brand-600 text-[10px] font-bold rounded-full">
+                      {stats.pendingTutors}
+                    </span>
+                  )}
+                </Link>
               </div>
             </div>
 
             {/* Stats Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              {stats.map((stat, index) => {
+              {statCards.map((stat, index) => {
                 const Icon = stat.icon;
                 return (
                   <motion.div 
@@ -320,67 +475,86 @@ const AdminDashboard = () => {
                     <h2 className="text-lg font-bold text-slate-900">Pending Tutor Approvals</h2>
                     <p className="text-sm text-slate-500">Review and approve new tutor applications</p>
                   </div>
-                  <Link to="/admin/approvals" className="text-brand-600 hover:text-brand-700 text-sm font-semibold flex items-center">
+                  <Link to="/admin/tutor-approvals" className="text-brand-600 hover:text-brand-700 text-sm font-semibold flex items-center">
                     View All <ArrowUpRight className="h-4 w-4 ml-1" />
                   </Link>
                 </div>
                 
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-slate-50/50">
-                        <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Tutor</th>
-                        <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Qualifications</th>
-                        <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Subjects</th>
-                        <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-50">
-                      {pendingApprovals.map((tutor) => (
-                        <tr key={tutor.id} className="hover:bg-slate-50/50 transition-colors group">
-                          <td className="px-6 py-4">
-                            <div className="flex items-center space-x-3">
-                              <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600 font-bold text-xs border border-slate-200">
-                                {tutor.avatar}
-                              </div>
-                              <div>
-                                <p className="text-sm font-semibold text-slate-900">{tutor.name}</p>
-                                <p className="text-[10px] text-slate-400 font-medium">Applied {tutor.appliedDate}</p>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <p className="text-sm text-slate-600 line-clamp-1">{tutor.qualifications}</p>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="flex flex-wrap gap-1">
-                              {tutor.subjects.slice(0, 2).map((subject, idx) => (
-                                <span key={idx} className="text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md">
-                                  {subject}
-                                </span>
-                              ))}
-                              {tutor.subjects.length > 2 && (
-                                <span className="text-[10px] font-bold text-slate-400 px-1">+{tutor.subjects.length - 2}</span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            <div className="flex items-center justify-end space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors" title="Approve">
-                                <CheckCircle className="h-5 w-5" />
-                              </button>
-                              <button className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors" title="Reject">
-                                <XCircle className="h-5 w-5" />
-                              </button>
-                              <button className="p-2 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors">
-                                <MoreVertical className="h-5 w-5" />
-                              </button>
-                            </div>
-                          </td>
+                  {pendingApprovals.length > 0 ? (
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-slate-50/50">
+                          <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Tutor</th>
+                          <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Qualifications</th>
+                          <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Subjects</th>
+                          <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-right">Actions</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        {pendingApprovals.slice(0, 4).map((tutor) => (
+                          <tr key={tutor._id} className="hover:bg-slate-50/50 transition-colors group">
+                            <td className="px-6 py-4">
+                              <div className="flex items-center space-x-3">
+                                <div className="w-10 h-10 rounded-xl bg-brand-100 flex items-center justify-center text-brand-600 font-bold text-xs border border-brand-200">
+                                  {getInitials(tutor.name)}
+                                </div>
+                                <div>
+                                  <p className="text-sm font-semibold text-slate-900">{tutor.name}</p>
+                                  <p className="text-[10px] text-slate-400 font-medium">
+                                    Applied {new Date(tutor.createdAt).toLocaleDateString()}
+                                  </p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <p className="text-sm text-slate-600 line-clamp-1">{tutor.qualifications}</p>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="flex flex-wrap gap-1">
+                                {tutor.subjects?.slice(0, 2).map((subject, idx) => (
+                                  <span key={idx} className="text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md">
+                                    {subject}
+                                  </span>
+                                ))}
+                                {tutor.subjects?.length > 2 && (
+                                  <span className="text-[10px] font-bold text-slate-400 px-1">+{tutor.subjects.length - 2}</span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              <div className="flex items-center justify-end space-x-2">
+                                <button 
+                                  onClick={() => handleTutorAction(tutor._id, 'approve')}
+                                  disabled={actionLoading}
+                                  className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors disabled:opacity-50"
+                                  title="Approve"
+                                >
+                                  <CheckCircle className="h-5 w-5" />
+                                </button>
+                                <button 
+                                  onClick={() => handleTutorAction(tutor._id, 'reject')}
+                                  disabled={actionLoading}
+                                  className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors disabled:opacity-50"
+                                  title="Reject"
+                                >
+                                  <XCircle className="h-5 w-5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <div className="p-12 text-center">
+                      <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <UserCheck className="h-8 w-8 text-slate-400" />
+                      </div>
+                      <p className="text-slate-500 font-medium">No pending tutor approvals</p>
+                      <p className="text-xs text-slate-400 mt-1">All caught up! New tutor applications will appear here.</p>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -416,32 +590,33 @@ const AdminDashboard = () => {
                       );
                     })}
                   </div>
-                  <button className="w-full mt-6 py-2.5 bg-slate-50 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-100 transition-colors border border-slate-100">
-                    View Detailed Logs
-                  </button>
                 </div>
 
                 {/* Recent Activities Widget */}
                 <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
                   <h2 className="text-lg font-bold text-slate-900 mb-6">Recent Activities</h2>
-                  <div className="space-y-6 relative before:absolute before:left-[15px] before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-100">
-                    {recentActivities.map((activity) => {
-                      const Icon = activity.icon;
-                      return (
-                        <div key={activity.id} className="flex items-start space-x-4 relative z-10">
-                          <div className={`w-8 h-8 rounded-full bg-white border-2 border-slate-50 flex items-center justify-center ${activity.color} shadow-sm`}>
-                            <Icon className="h-4 w-4" />
+                  {recentActivities.length > 0 ? (
+                    <div className="space-y-6 relative before:absolute before:left-[15px] before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-100">
+                      {recentActivities.slice(0, 4).map((activity) => {
+                        const Icon = activity.icon || FileText;
+                        return (
+                          <div key={activity._id} className="flex items-start space-x-4 relative z-10">
+                            <div className={`w-8 h-8 rounded-full bg-white border-2 border-slate-50 flex items-center justify-center ${activity.color || 'text-brand-500'} shadow-sm`}>
+                              <Icon className="h-4 w-4" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm text-slate-700 leading-tight">
+                                <span className="font-bold text-slate-900">{activity.user}</span> {activity.action}
+                              </p>
+                              <p className="text-[10px] text-slate-400 font-medium mt-1 uppercase tracking-wider">{activity.time}</p>
+                            </div>
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm text-slate-700 leading-tight">
-                              <span className="font-bold text-slate-900">{activity.user}</span> {activity.action}
-                            </p>
-                            <p className="text-[10px] text-slate-400 font-medium mt-1 uppercase tracking-wider">{activity.time}</p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-slate-500 text-center py-4">No recent activities</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -451,14 +626,15 @@ const AdminDashboard = () => {
               <h2 className="text-lg font-bold text-slate-900 mb-6">Quick Actions</h2>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {[
-                  { label: 'Add User', icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' },
-                  { label: 'Announcement', icon: Bell, color: 'text-amber-600', bg: 'bg-amber-50' },
-                  { label: 'Reports', icon: BarChart3, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-                  { label: 'Settings', icon: Settings, color: 'text-slate-600', bg: 'bg-slate-50' },
+                  { label: 'Add User', icon: Users, color: 'text-blue-600', bg: 'bg-blue-50', path: '/admin/users/add' },
+                  { label: 'Announcement', icon: Bell, color: 'text-amber-600', bg: 'bg-amber-50', path: '/admin/announcements/new' },
+                  { label: 'Reports', icon: BarChart3, color: 'text-emerald-600', bg: 'bg-emerald-50', path: '/admin/analytics' },
+                  { label: 'Settings', icon: Settings, color: 'text-slate-600', bg: 'bg-slate-50', path: '/admin/settings' },
                 ].map((action, i) => {
                   const Icon = action.icon;
                   return (
-                    <button 
+                    <Link 
+                      to={action.path}
                       key={i}
                       className="group p-6 bg-white border border-slate-100 rounded-3xl hover:border-brand-200 hover:shadow-lg hover:shadow-brand-500/5 transition-all text-center"
                     >
@@ -466,7 +642,7 @@ const AdminDashboard = () => {
                         <Icon className="h-6 w-6" />
                       </div>
                       <span className="text-sm font-bold text-slate-700 group-hover:text-brand-600 transition-colors">{action.label}</span>
-                    </button>
+                    </Link>
                   );
                 })}
               </div>
@@ -483,9 +659,9 @@ const AdminDashboard = () => {
               <span className="text-xs text-slate-400 ml-2">© 2024 Admin Portal v1.0.2</span>
             </div>
             <div className="flex items-center space-x-6 text-xs font-bold text-slate-400 uppercase tracking-widest">
-              <a href="#" className="hover:text-brand-500 transition-colors">Documentation</a>
-              <a href="#" className="hover:text-brand-500 transition-colors">Support</a>
-              <a href="#" className="hover:text-brand-500 transition-colors">Privacy</a>
+              <button className="hover:text-brand-500 transition-colors">Documentation</button>
+              <button className="hover:text-brand-500 transition-colors">Support</button>
+              <button className="hover:text-brand-500 transition-colors">Privacy</button>
             </div>
           </div>
         </footer>

@@ -7,6 +7,8 @@ import {
   ShieldCheck, UserCircle
 } from 'lucide-react';
 
+const API_BASE_URL = 'http://localhost:5000/api/auth'; // Add this line
+
 const Login = () => {
   const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
@@ -15,39 +17,10 @@ const Login = () => {
     password: '',
     rememberMe: false
   });
-  // FIXED: Removed TypeScript type annotation
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
   const [loginError, setLoginError] = useState('');
   const [showDemoLogins, setShowDemoLogins] = useState(false);
-
-  // Mock users for demo
-  const mockUsers = [
-    {
-      id: 1,
-      email: 'admin@smartkuppi.com',
-      password: 'admin123',
-      role: 'admin',
-      name: 'Admin User',
-      status: 'active'
-    },
-    {
-      id: 2,
-      email: 'tutor@example.com',
-      password: 'tutor123',
-      role: 'tutor',
-      name: 'John Tutor',
-      status: 'approved'
-    },
-    {
-      id: 3,
-      email: 'student@example.com',
-      password: 'student123',
-      role: 'student',
-      name: 'Jane Student',
-      status: 'active'
-    }
-  ];
 
   const validateForm = () => {
     const newErrors = {};
@@ -60,8 +33,6 @@ const Login = () => {
     
     if (!formData.password) {
       newErrors.password = 'Password is required';
-    } else if (formData.password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters';
     }
     
     setErrors(newErrors);
@@ -91,55 +62,70 @@ const Login = () => {
     setIsLoading(true);
     setLoginError('');
     
-    // Simulate API call
-    setTimeout(() => {
-      const user = mockUsers.find(
-        u => u.email === formData.email && u.password === formData.password
-      );
+    try {
+      const response = await fetch(`${API_BASE_URL}/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: formData.email,
+          password: formData.password
+        })
+      });
+
+      const data = await response.json();
       
-      if (user) {
-        if (user.role === 'tutor') {
-          if (user.status === 'pending') {
-            setLoginError('Your tutor account is pending approval. Please wait for admin verification.');
-            setIsLoading(false);
-            return;
-          } else if (user.status === 'suspended') {
-            setLoginError('Your tutor account has been suspended. Please contact admin.');
-            setIsLoading(false);
-            return;
-          }
+      if (data.success) {
+        // Store user data and token
+        localStorage.setItem('user', JSON.stringify(data.user));
+        localStorage.setItem('token', data.token);
+        
+        // Also store remember me preference if needed
+        if (formData.rememberMe) {
+          localStorage.setItem('rememberMe', 'true');
         }
         
-        localStorage.setItem('user', JSON.stringify({
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-          status: user.status
-        }));
-        
-        switch(user.role) {
-          case 'admin': navigate('/admin-dashboard'); break;
-          case 'tutor': navigate('/tutor-dashboard'); break;
-          case 'student': navigate('/student-dashboard'); break;
-          default: navigate('/');
+        // Redirect based on role
+        switch(data.user.role) {
+          case 'admin':
+            navigate('/admin-dashboard');
+            break;
+          case 'tutor':
+            navigate('/tutor-dashboard');
+            break;
+          case 'student':
+            navigate('/student-dashboard');
+            break;
+          default:
+            navigate('/');
         }
       } else {
-        setLoginError('Invalid email or password');
+        // Handle error message from backend
+        setLoginError(data.message || 'Invalid email or password');
       }
+    } catch (error) {
+      console.error('Login error:', error);
+      setLoginError('Network error. Please check if backend server is running.');
+    } finally {
       setIsLoading(false);
-    }, 1500);
+    }
   };
 
-  const fillDemoCredentials = (role) => {
-    const creds = mockUsers.find(u => u.role === role);
-    if (creds) {
-      setFormData({
-        ...formData,
-        email: creds.email,
-        password: creds.password
-      });
-    }
+  // Optional: For demo purposes, you can still have quick fill buttons
+  const fillDemoCredentials = async (role) => {
+    // You can either use mock data or fetch from backend
+    const demoCredentials = {
+      admin: { email: 'admin@smartkuppi.com', password: 'admin123' },
+      tutor: { email: 'tutor@example.com', password: 'tutor123' },
+      student: { email: 'student@example.com', password: 'student123' }
+    };
+    
+    setFormData({
+      ...formData,
+      email: demoCredentials[role].email,
+      password: demoCredentials[role].password
+    });
   };
 
   return (

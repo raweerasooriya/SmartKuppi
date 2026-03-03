@@ -9,6 +9,8 @@ import {
   Award, Sparkles
 } from 'lucide-react';
 
+const API_BASE_URL = 'http://localhost:5000/api/auth'; // Your backend URL
+
 const Register = () => {
   const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
@@ -147,29 +149,100 @@ const Register = () => {
     }
   };
 
-  const handleSubmit = async (e) => { // Removed TypeScript type
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validateForm()) return;
     
     setIsLoading(true);
     
-    setTimeout(() => {
-      setRegistrationSuccess(true);
+    try {
+      // Determine which endpoint to use based on user type
+      const endpoint = userType === 'student' 
+        ? `${API_BASE_URL}/register/student`
+        : `${API_BASE_URL}/register/tutor`;
+      
+      // Prepare the data based on user type
+      let userData;
+      
       if (userType === 'student') {
-        localStorage.setItem('user', JSON.stringify({
+        userData = {
           name: formData.name,
           email: formData.email,
-          role: 'student',
-          status: 'active'
-        }));
-        setTimeout(() => navigate('/student-dashboard'), 2000);
+          password: formData.password,
+          phone: formData.phone,
+          studentId: formData.studentId,
+          university: formData.university,
+          faculty: formData.faculty,
+          department: formData.department,
+          academicYear: formData.academicYear
+        };
       } else {
-        setTimeout(() => navigate('/login', { 
-          state: { message: 'Application submitted! Awaiting admin approval.' }
-        }), 3000);
+        // Make sure yearsOfExperience is a number
+        const yearsExp = parseInt(formData.yearsOfExperience) || 0;
+        
+        userData = {
+          name: formData.name,
+          email: formData.email,
+          password: formData.password,
+          phone: formData.phone,
+          qualifications: formData.qualifications,
+          specialization: formData.specialization,
+          yearsOfExperience: yearsExp,
+          bio: formData.bio,
+          linkedin: formData.linkedin || '',
+          subjects: formData.subjects
+        };
       }
+      
+      console.log('Sending data:', userData); // For debugging
+      
+      // Make the API call
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(userData)
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        // Registration successful
+        setRegistrationSuccess(true);
+        
+        // Store user data in localStorage
+        localStorage.setItem('user', JSON.stringify(data.user));
+        localStorage.setItem('token', data.token);
+        
+        // Redirect based on user type
+        if (userType === 'student') {
+          setTimeout(() => navigate('/student-dashboard'), 2000);
+        } else {
+          setTimeout(() => navigate('/login', { 
+            state: { message: 'Application submitted! Awaiting admin approval.' }
+          }), 3000);
+        }
+      } else {
+        // Handle validation errors from backend
+        if (data.errors) {
+          // Format validation errors
+          const apiErrors = {};
+          data.errors.forEach(err => {
+            apiErrors[err.param] = err.msg;
+          });
+          setErrors(apiErrors);
+        } else {
+          // Show general error message
+          alert(data.message || 'Registration failed. Please try again.');
+        }
+      }
+    } catch (error) {
+      console.error('Registration error:', error);
+      alert('Network error. Please check if backend server is running.');
+    } finally {
       setIsLoading(false);
-    }, 2000);
+    }
   };
 
   if (registrationSuccess) {
