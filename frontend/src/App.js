@@ -8,6 +8,7 @@ import Register from './pages/Register';
 import AdminDashboard from './pages/AdminDashboard';
 import TutorDashboard from './pages/TutorDashboard';
 import StudentDashboard from './pages/StudentDashboard';
+import ForgotPassword from './pages/ForgotPassword'; // This is now used in routes
 // import FourthDashboard from './pages/FourthDashboard'; // Placeholder for your 4th dashboard
 
 function App() {
@@ -18,6 +19,7 @@ function App() {
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} /> {/* Added this route */}
         <Route path="/admin-dashboard" element={<AdminDashboard />} />
         <Route path="/tutor-dashboard" element={<TutorDashboard />} />
         <Route path="/student-dashboard" element={<StudentDashboard />} />
