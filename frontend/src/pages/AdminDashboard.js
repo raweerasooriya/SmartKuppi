@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -10,6 +10,8 @@ import {
   Activity, Database, HardDrive, Cpu, UserCheck, UserX,
   GraduationCap, ChevronLeft
 } from 'lucide-react';
+
+import UserManagement from './UserManagement';
 
 const API_BASE_URL = 'http://localhost:5000/api';
 
@@ -300,7 +302,7 @@ const TutorDetailModal = ({ tutor, onClose, onStatusChange, actionLoading, getIn
 // ─── Main Component ─────────────────────────────────────────────────────────────
 const AdminDashboard = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [activeView, setActiveView] = useState('dashboard'); // 'dashboard' | 'tutors'
+  const [activeView, setActiveView] = useState('dashboard'); // 'dashboard' | 'tutors' | 'users'
   const [admin, setAdmin] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -320,23 +322,8 @@ const AdminDashboard = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  useEffect(() => {
-    const userData = localStorage.getItem('user');
-    const token = localStorage.getItem('token');
-    if (!userData || !token) { navigate('/login'); return; }
-    try {
-      const parsedUser = JSON.parse(userData);
-      if (parsedUser.role !== 'admin') { navigate('/'); return; }
-      setAdmin(parsedUser);
-      fetchDashboardData(token);
-      fetchTutors(token);
-    } catch {
-      navigate('/login');
-    }
-  }, [navigate]);
-
   // ── Data Fetching ──
-  const fetchDashboardData = async (token) => {
+  const fetchDashboardData = useCallback(async (token) => {
     setLoading(true);
     try {
       const [statsRes, activitiesRes] = await Promise.all([
@@ -352,9 +339,9 @@ const AdminDashboard = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const fetchTutors = async (token) => {
+  const fetchTutors = useCallback(async (token) => {
     setTutorsLoading(true);
     try {
       const res = await fetch(`${API_BASE_URL}/admin/tutors`, { headers: { Authorization: `Bearer ${token}` } });
@@ -366,7 +353,22 @@ const AdminDashboard = () => {
     } finally {
       setTutorsLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    const userData = localStorage.getItem('user');
+    const token = localStorage.getItem('token');
+    if (!userData || !token) { navigate('/login'); return; }
+    try {
+      const parsedUser = JSON.parse(userData);
+      if (parsedUser.role !== 'admin') { navigate('/'); return; }
+      setAdmin(parsedUser);
+      fetchDashboardData(token);
+      fetchTutors(token);
+    } catch {
+      navigate('/login');
+    }
+  }, [navigate, fetchDashboardData, fetchTutors]);
 
   const setMockDashboardData = () => {
     setStats({ totalUsers: 1234, pendingTutors: 23, totalResources: 856, activeLessons: 128 });
@@ -396,7 +398,7 @@ const AdminDashboard = () => {
         body: JSON.stringify({ status: newStatus }),
       });
       const data = await res.json();
-      if (data.success || true) { // optimistic update
+      if (data.success || true) {
         setTutors(prev => prev.map(t => t._id === tutorId ? { ...t, status: newStatus } : t));
         setStats(prev => ({
           ...prev,
@@ -406,7 +408,6 @@ const AdminDashboard = () => {
         }));
       }
     } catch (e) {
-      // optimistic
       setTutors(prev => prev.map(t => t._id === tutorId ? { ...t, status: newStatus } : t));
     } finally {
       setActionLoading(false);
@@ -443,7 +444,7 @@ const AdminDashboard = () => {
 
   const navLinks = [
     { name: 'Dashboard', path: '/admin-dashboard', icon: Layout, isActive: activeView === 'dashboard', onClick: () => setActiveView('dashboard') },
-    { name: 'User Management', path: '/admin/users', icon: Users },
+    { name: 'User Management', path: '#', icon: Users, isActive: activeView === 'users', onClick: () => setActiveView('users') },
     { name: 'Tutor Approvals', path: '#', icon: UserCheck, badge: pendingTutors.length, isActive: activeView === 'tutors', onClick: () => setActiveView('tutors') },
     { name: 'Resources', path: '/admin/resources', icon: BookOpen },
     { name: 'Analytics', path: '/admin/analytics', icon: BarChart3 },
@@ -471,7 +472,7 @@ const AdminDashboard = () => {
     const isTabLink = link.onClick;
 
     const content = (
-      <div className={`flex items-center justify-between px-3 py-2.5 rounded-xl transition-all duration-200 group cursor-pointer ${
+      <div key={link.name} className={`flex items-center justify-between px-3 py-2.5 rounded-xl transition-all duration-200 group cursor-pointer ${
         isActive ? 'bg-brand-500/10 text-brand-400 font-medium' : 'hover:bg-slate-800 hover:text-white text-slate-300'
       }`} onClick={link.onClick}>
         <div className="flex items-center space-x-3">
@@ -484,11 +485,7 @@ const AdminDashboard = () => {
       </div>
     );
 
-    return isTabLink ? (
-      <div key={link.name}>{content}</div>
-    ) : (
-      <Link key={link.name} to={link.path}>{content}</Link>
-    );
+    return isTabLink ? content : <Link key={link.name} to={link.path}>{content}</Link>;
   });
 
   if (loading) {
@@ -607,7 +604,7 @@ const AdminDashboard = () => {
                           ))}
                           {tutor.subjects?.length > 2 && <span className="text-[10px] font-bold text-slate-400">+{tutor.subjects.length - 2}</span>}
                         </div>
-                      </td>
+                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end space-x-2">
                           <button onClick={() => handleTutorStatusChange(tutor._id, 'approved')} disabled={actionLoading} className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors disabled:opacity-50" title="Approve"><CheckCircle className="h-5 w-5" /></button>
@@ -911,18 +908,24 @@ const AdminDashboard = () => {
           getInitials={getInitials}
           handleLogout={handleLogout}
           showSearch={activeView === 'dashboard'}
-          title={activeView === 'tutors' ? 'Tutor Approval Management' : ''}
+          title={activeView === 'tutors' ? 'Tutor Approval Management' : activeView === 'users' ? 'User Management' : ''}
         />
 
         <main className="flex-1 overflow-y-auto p-4 sm:p-8">
           <AnimatePresence mode="wait">
-            {activeView === 'dashboard' ? (
+            {activeView === 'dashboard' && (
               <motion.div key="dashboard" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                 <DashboardView />
               </motion.div>
-            ) : (
+            )}
+            {activeView === 'tutors' && (
               <motion.div key="tutors" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                 <TutorApprovalsView />
+              </motion.div>
+            )}
+            {activeView === 'users' && (
+              <motion.div key="users" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                <UserManagement onBack={() => setActiveView('dashboard')} />
               </motion.div>
             )}
           </AnimatePresence>

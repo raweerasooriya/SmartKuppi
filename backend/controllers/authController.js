@@ -1,62 +1,48 @@
-// controllers/authController.js
+// backend/controllers/authController.js
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 const { validationResult } = require('express-validator');
+const bcrypt = require('bcryptjs');
 
-// Generate JWT Token
+// ✅ Add this helper function
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
     expiresIn: '30d'
   });
 };
+// ... (generateToken remains same)
 
 // @desc    Register a student
 // @route   POST /api/auth/register/student
 // @access  Public
 exports.registerStudent = async (req, res) => {
   try {
-    // Check validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ 
-        success: false, 
-        errors: errors.array() 
-      });
+      return res.status(400).json({ success: false, errors: errors.array() });
     }
 
-    const { 
-      name, email, password, phone, 
-      studentId, university, faculty, department, academicYear 
-    } = req.body;
+    const { name, email, password, phone, studentId, university, faculty, department, academicYear } = req.body;
 
-    // Check if user exists by email or studentId
-    const existingUser = await User.findOne({ 
-      $or: [{ email }, { studentId }] 
-    });
-    
+    // Check existing user
+    const existingUser = await User.findOne({ $or: [{ email }, { studentId }] });
     if (existingUser) {
-      if (existingUser.email === email) {
-        return res.status(400).json({ 
-          success: false, 
-          message: 'Email already registered' 
-        });
-      }
-      if (existingUser.studentId === studentId) {
-        return res.status(400).json({ 
-          success: false, 
-          message: 'Student ID already exists' 
-        });
-      }
+      if (existingUser.email === email) return res.status(400).json({ success: false, message: 'Email already registered' });
+      if (existingUser.studentId === studentId) return res.status(400).json({ success: false, message: 'Student ID already exists' });
     }
 
-    // Create student
+    // Hash password manually
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    // Create user with hashed password
     const user = await User.create({
       name,
       email,
-      password,
+      password: hashedPassword,   // ✅ store hashed password
       phone,
       role: 'student',
-      status: 'approved', // Students are auto-approved
+      status: 'active',
       studentId,
       university,
       faculty,
@@ -64,9 +50,7 @@ exports.registerStudent = async (req, res) => {
       academicYear
     });
 
-    // Generate token
     const token = generateToken(user._id);
-
     res.status(201).json({
       success: true,
       message: 'Student account created successfully',
@@ -81,10 +65,7 @@ exports.registerStudent = async (req, res) => {
     });
   } catch (error) {
     console.error('Student registration error:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: error.message 
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -93,38 +74,29 @@ exports.registerStudent = async (req, res) => {
 // @access  Public
 exports.registerTutor = async (req, res) => {
   try {
-    // Check validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ 
-        success: false, 
-        errors: errors.array() 
-      });
+      return res.status(400).json({ success: false, errors: errors.array() });
     }
 
-    const {
-      name, email, password, phone,
-      qualifications, specialization, yearsOfExperience,
-      bio, linkedin, subjects
-    } = req.body;
+    const { name, email, password, phone, qualifications, specialization, yearsOfExperience, bio, linkedin, subjects } = req.body;
 
-    // Check if user exists
+    // Check existing user
     const userExists = await User.findOne({ email });
-    if (userExists) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Email already registered' 
-      });
-    }
+    if (userExists) return res.status(400).json({ success: false, message: 'Email already registered' });
 
-    // Create tutor (pending approval)
+    // Hash password manually
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    // Create tutor with hashed password
     const user = await User.create({
       name,
       email,
-      password,
+      password: hashedPassword,   // ✅ store hashed password
       phone,
       role: 'tutor',
-      status: 'pending', // Tutors need admin approval
+      status: 'pending',
       qualifications,
       specialization,
       yearsOfExperience: Number(yearsOfExperience),
@@ -133,9 +105,7 @@ exports.registerTutor = async (req, res) => {
       subjects: subjects || []
     });
 
-    // Generate token (they can use it to check status)
     const token = generateToken(user._id);
-
     res.status(201).json({
       success: true,
       message: 'Tutor application submitted successfully. Pending admin approval.',
@@ -150,12 +120,10 @@ exports.registerTutor = async (req, res) => {
     });
   } catch (error) {
     console.error('Tutor registration error:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: error.message 
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
+
 
 // @desc    Login user
 // @route   POST /api/auth/login
@@ -164,7 +132,6 @@ exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Validate email & password
     if (!email || !password) {
       return res.status(400).json({ 
         success: false, 
@@ -172,7 +139,7 @@ exports.login = async (req, res) => {
       });
     }
 
-    // Check for user
+    // IMPORTANT: Use select('+password') to include the password field
     const user = await User.findOne({ email }).select('+password');
     if (!user) {
       return res.status(401).json({ 
