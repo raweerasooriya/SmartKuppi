@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Mail, Lock, LogIn, Eye, EyeOff, 
-  AlertCircle, ChevronRight, GraduationCap,
+  AlertCircle, ChevronRight, GraduationCap, BookOpen,
   ShieldCheck, UserCircle
 } from 'lucide-react';
 
@@ -146,7 +146,7 @@ const Login = () => {
           <div className="relative z-10">
             <Link to="/" className="flex items-center space-x-3 mb-12">
               <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-indigo-600 shadow-lg">
-                <GraduationCap className="h-6 w-6" />
+                <BookOpen className="h-6 w-6" />
               </div>
               <span className="font-bold text-2xl tracking-tight">Smart<span className="text-indigo-200">Kuppi</span></span>
             </Link>
