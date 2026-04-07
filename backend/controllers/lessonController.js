@@ -1,3 +1,4 @@
+// backend/controllers/lessonController.js
 const Lesson = require('../models/Lesson');
 const Course = require('../models/Course');
 

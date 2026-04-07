@@ -1,29 +1,45 @@
 // backend/routes/adminRoutes.js
 const express = require('express');
 const router = express.Router();
-const { 
-  getTutors, 
-  updateTutorStatus, 
+const { protect, authorize } = require('../middleware/authMiddleware');
+const {
+  // User management
+  getTutors,
+  updateTutorStatus,
   getTutorDetails,
   getAllUsers,
   getUserById,
   createUser,
   updateUser,
   deleteUser,
-  toggleUserStatus
+  toggleUserStatus,
+  // Lesson scheduling
+  getAllLessons,
+  adminCreateLesson,
+  getTutorCourses,
+  adminUpdateLesson,
+  adminDeleteLesson,
+  // Dashboard
+  getDashboardStats,
+  getRecentActivities,
+  
+  getAllCourses,
+  adminCreateCourse,
+  getAllResources,
+  getAdminConversations,
+  adminSendMessage
 } = require('../controllers/adminController');
-const { protect, authorize } = require('../middleware/authMiddleware');  // ← Make sure both are imported
 
 // All admin routes require authentication and admin role
 router.use(protect);
-router.use(authorize('admin'));  // ← This is correct
+router.use(authorize('admin'));
 
-// Tutor routes
+// ============ TUTOR ROUTES ============
 router.get('/tutors', getTutors);
 router.get('/tutor/:id', getTutorDetails);
 router.put('/update-tutor-status/:id', updateTutorStatus);
 
-// User management routes
+// ============ USER MANAGEMENT ROUTES ============
 router.get('/users', getAllUsers);
 router.get('/users/:id', getUserById);
 router.post('/users', createUser);
@@ -31,38 +47,36 @@ router.put('/users/:id', updateUser);
 router.delete('/users/:id', deleteUser);
 router.put('/users/:id/toggle-status', toggleUserStatus);
 
-// Dashboard stats
-router.get('/stats', async (req, res) => {
-  try {
-    const User = require('../models/User');
-    const totalUsers = await User.countDocuments();
-    const pendingTutors = await User.countDocuments({ role: 'tutor', status: 'pending' });
-    const totalResources = 856;
-    const activeLessons = 128;
-    
-    res.json({
-      success: true,
-      data: { totalUsers, pendingTutors, totalResources, activeLessons }
-    });
-  } catch (error) {
-    console.error('Error fetching stats:', error);
-    res.status(500).json({ success: false, message: 'Server error' });
-  }
-});
+// ============ LESSON SCHEDULING ROUTES ============
+// Get all lessons (for schedule view)
+router.get('/lessons', getAllLessons);
 
-// Recent activities
-router.get('/recent-activities', async (req, res) => {
-  try {
-    const activities = [
-      { _id: '1', user: 'John Doe', action: 'Uploaded new resource', time: '5 min ago', type: 'resource', color: 'text-emerald-500' },
-      { _id: '2', user: 'Nimali Silva', action: 'Registered as tutor', time: '12 min ago', type: 'user', color: 'text-brand-500' },
-      { _id: '3', user: 'Kamal Perera', action: 'Completed a lesson', time: '1 hr ago', type: 'lesson', color: 'text-violet-500' },
-    ];
-    res.json({ success: true, data: activities });
-  } catch (error) {
-    console.error('Error fetching activities:', error);
-    res.json({ success: true, data: [] });
-  }
-});
+// Create new lesson (admin scheduling)
+router.post('/lessons', adminCreateLesson);
+
+// Get tutor's courses (for step 2 of scheduling)
+router.get('/tutors/:tutorId/courses', getTutorCourses);
+
+// Update lesson
+router.put('/lessons/:id', adminUpdateLesson);
+
+// Delete lesson
+router.delete('/lessons/:id', adminDeleteLesson);
+
+// ============ DASHBOARD STATS ROUTES ============
+router.get('/stats', getDashboardStats);
+router.get('/recent-activities', getRecentActivities);
+
+// ============ COURSE MANAGEMENT (ADMIN) ============
+router.get('/courses', getAllCourses);
+router.post('/courses', adminCreateCourse);
+
+// ============ RESOURCE MANAGEMENT (ADMIN) ============
+router.get('/resources', getAllResources);
+
+// ============ ADMIN-TUTOR MESSAGING ============
+router.get('/messages/conversations', getAdminConversations);
+router.post('/messages/send', adminSendMessage);
 
 module.exports = router;
+
