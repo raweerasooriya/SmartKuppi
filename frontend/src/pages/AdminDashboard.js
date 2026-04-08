@@ -137,7 +137,10 @@ const ScheduleLessonModal = ({ isOpen, onClose, tutors, onSchedule, loading: sch
                 <p className="text-sm text-slate-600">Select a tutor from the list below.</p>
                 <div className="space-y-3 max-h-[400px] overflow-y-auto">
                   {tutors.map(tutor => (
-                    <button key={tutor._id} onClick={() => setSelectedTutor(tutor)}
+                    <button key={tutor._id} onClick={() => {
+                        setSelectedTutor(tutor);
+                        if (step === 1) setStep(2);
+                      }}
                       className={`w-full p-4 rounded-2xl border-2 text-left ${selectedTutor?._id === tutor._id ? 'border-indigo-500 bg-indigo-50' : 'border-slate-100 hover:border-indigo-200'}`}>
                       <div className="flex items-center gap-3">
                         <div className="w-12 h-12 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">
@@ -170,7 +173,10 @@ const ScheduleLessonModal = ({ isOpen, onClose, tutors, onSchedule, loading: sch
                 ) : (
                   <div className="space-y-3 max-h-[350px] overflow-y-auto">
                     {tutorCourses.map(course => (
-                      <button key={course._id} onClick={() => setSelectedCourse(course)}
+                      <button key={course._id} onClick={() => {
+                          setSelectedCourse(course);
+                          if (step === 2) setStep(3);
+                        }}
                         className={`w-full p-4 rounded-2xl border-2 text-left ${selectedCourse?._id === course._id ? 'border-indigo-500 bg-indigo-50' : 'border-slate-100 hover:border-indigo-200'}`}>
                         <div className="flex justify-between items-start">
                           <div className="flex-1">
@@ -191,7 +197,8 @@ const ScheduleLessonModal = ({ isOpen, onClose, tutors, onSchedule, loading: sch
             )}
 
             {step === 3 && (
-              <form onSubmit={handleSubmit} className="space-y-5">
+              <div className="max-h-[400px] overflow-y-auto pr-2">
+                <form onSubmit={handleSubmit} className="space-y-5">
                 <div className="bg-slate-50 rounded-xl p-3 flex items-center gap-3">
                   <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center"><BookOpen className="h-5 w-5 text-indigo-600" /></div>
                   <div><p className="text-xs text-slate-500">Scheduling for</p><p className="font-bold">{selectedCourse?.title}</p><p className="text-xs text-slate-500">Tutor: {selectedTutor?.name}</p></div>
@@ -208,8 +215,10 @@ const ScheduleLessonModal = ({ isOpen, onClose, tutors, onSchedule, loading: sch
                   <button type="button" onClick={onClose} className="px-6 py-3 bg-white border-2 rounded-xl font-bold">Cancel</button>
                 </div>
               </form>
+              </div>
             )}
           </div>
+          
         </motion.div>
       </motion.div>
     </AnimatePresence>
@@ -501,6 +510,152 @@ const ResourceManagement = ({ onBack }) => {
       <div className="bg-white p-5 rounded-3xl border"><div className="flex flex-wrap gap-4"><div className="flex-1 relative"><Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" /><input type="text" placeholder="Search resources..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-11 pr-4 py-3 bg-slate-50 rounded-xl" /></div><select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="px-4 py-3 bg-slate-50 rounded-xl"><option value="all">All Types</option><option value="pdf">PDF</option><option value="video">Video</option><option value="image">Image</option><option value="other">Other</option></select><select value={dateFilter} onChange={e => setDateFilter(e.target.value)} className="px-4 py-3 bg-slate-50 rounded-xl"><option value="all">All Time</option><option value="week">Last 7 days</option><option value="month">Last 30 days</option></select><select value={tutorFilter} onChange={e => setTutorFilter(e.target.value)} className="px-4 py-3 bg-slate-50 rounded-xl"><option value="all">All Tutors</option>{tutors.map(t => <option key={t._id} value={t._id}>{t.name}</option>)}</select></div></div>
       {loading ? (<div className="flex justify-center py-12"><div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div></div>) : (
         <div className="bg-white rounded-3xl border shadow-sm overflow-hidden"><div className="overflow-x-auto"><table className="w-full"><thead className="bg-slate-50"><tr><th className="px-6 py-4 text-left text-[10px] font-bold">Resource</th><th className="px-6 py-4 text-left text-[10px] font-bold">Course / Tutor</th><th className="px-6 py-4 text-left text-[10px] font-bold">Type</th><th className="px-6 py-4 text-left text-[10px] font-bold">Size</th><th className="px-6 py-4 text-left text-[10px] font-bold">Downloads</th><th className="px-6 py-4 text-left text-[10px] font-bold">Uploaded</th><th className="px-6 py-4 text-right text-[10px] font-bold">Actions</th></tr></thead><tbody className="divide-y">{filteredResources.map(r => (<tr key={r._id} className="hover:bg-slate-50"><td className="px-6 py-4"><div className="flex items-center gap-3"><FileText className="h-5 w-5 text-slate-500" /><div><p className="font-bold">{r.title}</p><p className="text-xs text-slate-500">{r.description?.slice(0,60)}</p></div></div></td><td className="px-6 py-4"><div><p className="text-sm font-medium">{r.course?.title}</p><p className="text-xs text-slate-500">by {r.course?.tutor?.name}</p></div></td><td className="px-6 py-4"><span className="px-2 py-1 bg-slate-100 text-slate-600 text-xs rounded-full uppercase">{r.fileType}</span></td><td className="px-6 py-4 text-sm">{r.fileSize || 'N/A'}</td><td className="px-6 py-4 text-sm">{r.downloads || 0}</td><td className="px-6 py-4 text-sm">{new Date(r.createdAt).toLocaleDateString()}</td><td className="px-6 py-4 text-right"><div className="flex justify-end gap-2"><a href={r.fileUrl} download className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg"><Download className="h-4 w-4" /></a><button className="p-2 text-slate-400 hover:bg-slate-100 rounded-lg"><MoreVertical className="h-4 w-4" /></button></div></td></tr>))}</tbody></table></div></div>
+      )}
+    </motion.div>
+  );
+};
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// SCHEDULE MANAGEMENT VIEW (extracted)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const ScheduleManagementView = ({
+  selectedDate,
+  setSelectedDate,
+  allLessons,
+  scheduleView,
+  setScheduleView,
+  filterTutor,
+  setFilterTutor,
+  filterCourse,
+  setFilterCourse,
+  setShowScheduleModal,
+  tileContent,
+  formatTime,
+  setActiveView
+}) => {
+  // Compute filtered lessons for the selected date
+  const filteredLessons = allLessons.filter(lesson => isSameDay(parseISO(lesson.date), selectedDate));
+  
+  const uniqueTutors = [...new Map(allLessons.map(l => [l.tutorId, { id: l.tutorId, name: l.tutorName }])).values()];
+  const uniqueCourses = [...new Map(allLessons.map(l => [l.courseId, { id: l.courseId, title: l.courseTitle }])).values()];
+  
+  return (
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-7xl mx-auto space-y-8">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          {/* The back button now expects a prop; but in this view we don't have a direct "onBack" – 
+              we'll let the parent handle navigation via setActiveView. 
+              We'll keep the button as is, but it calls setActiveView('dashboard') – 
+              that function must be passed or handled by parent. 
+              Since the parent (AdminDashboard) still has setActiveView, we can pass it as prop. 
+              I'll add setActiveView to the props list. */}
+          <button onClick={() => setActiveView('dashboard')} className="p-2 hover:bg-white border rounded-xl">
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+          <div>
+            <h1 className="text-2xl font-bold">Schedule Management</h1>
+            <p className="text-slate-500">View all scheduled lessons</p>
+          </div>
+        </div>
+        <div className="flex gap-3">
+          <button onClick={() => setScheduleView('calendar')} className={`px-4 py-2 rounded-xl text-sm font-bold ${scheduleView === 'calendar' ? 'bg-indigo-600 text-white' : 'bg-white border'}`}>Calendar</button>
+          <button onClick={() => setScheduleView('list')} className={`px-4 py-2 rounded-xl text-sm font-bold ${scheduleView === 'list' ? 'bg-indigo-600 text-white' : 'bg-white border'}`}>List View</button>
+          <button onClick={() => setShowScheduleModal(true)} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold shadow-md"><Plus className="h-4 w-4" />New Lesson</button>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="bg-white p-5 rounded-3xl border"><p className="text-xs font-bold text-slate-400">Total Lessons</p><p className="text-2xl font-bold">{allLessons.length}</p></div>
+        <div className="bg-white p-5 rounded-3xl border"><p className="text-xs font-bold text-slate-400">This Week</p><p className="text-2xl font-bold text-indigo-600">{allLessons.filter(l => { const d = new Date(l.date); const ws = startOfWeek(new Date()); const we = endOfWeek(new Date()); return d >= ws && d <= we; }).length}</p></div>
+        <div className="bg-white p-5 rounded-3xl border"><p className="text-xs font-bold text-slate-400">Upcoming</p><p className="text-2xl font-bold text-emerald-600">{allLessons.filter(l => new Date(l.date) > new Date()).length}</p></div>
+        <div className="bg-white p-5 rounded-3xl border"><p className="text-xs font-bold text-slate-400">Total Students</p><p className="text-2xl font-bold text-blue-600">{allLessons.reduce((s,l) => s + (l.enrolledCount||0), 0)}</p></div>
+      </div>
+
+      {/* Filters */}
+      <div className="bg-white p-5 rounded-3xl border">
+        <div className="flex flex-col md:flex-row gap-4 items-center">
+          <div className="flex items-center gap-2"><Filter className="h-4 w-4 text-slate-400" /><span className="text-sm">Filter by:</span></div>
+          <select value={filterTutor} onChange={e => setFilterTutor(e.target.value)} className="px-4 py-2 bg-slate-50 rounded-xl">
+            <option value="all">All Tutors</option>
+            {uniqueTutors.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+          <select value={filterCourse} onChange={e => setFilterCourse(e.target.value)} className="px-4 py-2 bg-slate-50 rounded-xl">
+            <option value="all">All Courses</option>
+            {uniqueCourses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* Calendar or List View */}
+      {scheduleView === 'calendar' ? (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-2 bg-white rounded-3xl border p-6">
+            <Calendar onChange={setSelectedDate} value={selectedDate} tileContent={tileContent} className="w-full border-none" />
+          </div>
+          <div className="bg-white rounded-3xl border overflow-hidden">
+            <div className="p-6 border-b bg-slate-50">
+              <div className="flex items-center gap-2"><CalendarIcon className="h-5 w-5 text-indigo-600" /><h3 className="font-bold">{format(selectedDate, 'EEEE, MMMM d, yyyy')}</h3></div>
+            </div>
+            <div className="p-6 space-y-4 max-h-[500px] overflow-y-auto">
+              {filteredLessons.length > 0 ? filteredLessons.map(l => (
+                <div key={l._id} className="p-4 bg-slate-50 rounded-2xl border">
+                  <h4 className="font-bold">{l.title}</h4>
+                  <p className="text-xs text-slate-500">{l.courseTitle}</p>
+                  <div className="flex items-center gap-2 text-xs text-slate-500 mt-2">
+                    <Clock className="h-3 w-3" /><span>{formatTime(l.date)}</span><span>•</span><span>{l.duration} min</span>
+                  </div>
+                  {l.meetingLink && <a href={l.meetingLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 mt-2">Join Session <ExternalLink className="h-3 w-3" /></a>}
+                </div>
+              )) : (
+                <div className="text-center py-12">
+                  <CalendarIcon className="h-12 w-12 text-slate-300 mx-auto mb-4" />
+                  <p>No lessons scheduled</p>
+                  <button onClick={() => setShowScheduleModal(true)} className="mt-4 text-indigo-600 text-sm font-bold">Schedule a lesson</button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-white rounded-3xl border overflow-hidden">
+          <div className="p-6 border-b bg-slate-50"><h2 className="text-lg font-bold">All Scheduled Lessons</h2></div>
+          <div className="divide-y">
+            {allLessons.length === 0 ? (
+              <div className="p-12 text-center">
+                <CalendarIcon className="h-12 w-12 text-slate-300 mx-auto mb-4" />
+                <p>No lessons scheduled yet</p>
+                <button onClick={() => setShowScheduleModal(true)} className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold">Create New Lesson</button>
+              </div>
+            ) : (
+              allLessons.sort((a, b) => new Date(a.date) - new Date(b.date)).map(l => (
+                <div key={l._id} className="p-6 hover:bg-slate-50">
+                  <div className="flex flex-col md:flex-row justify-between gap-4">
+                    <div className="flex items-start gap-4">
+                      <div className="w-12 h-12 rounded-2xl bg-indigo-100 flex items-center justify-center text-indigo-600"><Video className="h-6 w-6" /></div>
+                      <div>
+                        <h3 className="font-bold text-lg">{l.title}</h3>
+                        <p className="text-sm text-slate-500">{l.courseTitle}</p>
+                        <p className="text-sm text-slate-500">Tutor: {l.tutorName}</p>
+                        <div className="flex flex-wrap gap-3 mt-2 text-xs text-slate-500">
+                          <span className="flex items-center gap-1"><CalendarIcon className="h-3 w-3" />{new Date(l.date).toLocaleDateString()}</span>
+                          <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{formatTime(l.date)}</span>
+                          <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{l.duration} min</span>
+                          <span className="flex items-center gap-1"><Users className="h-3 w-3" />{l.enrolledCount || 0} enrolled</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      {l.meetingLink && new Date(l.date) > new Date() && <a href={l.meetingLink} target="_blank" rel="noopener noreferrer" className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold">Join Session</a>}
+                      <button className="p-2 text-slate-400 hover:bg-slate-100 rounded-lg"><Edit3 className="h-5 w-5" /></button>
+                      <button className="p-2 text-rose-400 hover:bg-rose-50 rounded-lg"><Trash2 className="h-5 w-5" /></button>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
       )}
     </motion.div>
   );
@@ -2229,21 +2384,6 @@ const AdminDashboard = () => {
     </motion.div>
   );
 
-
-  // Schedule Management View
-  const ScheduleManagementView = () => {
-    const uniqueTutors = [...new Map(allLessons.map(l => [l.tutorId, { id: l.tutorId, name: l.tutorName }])).values()];
-    const uniqueCourses = [...new Map(allLessons.map(l => [l.courseId, { id: l.courseId, title: l.courseTitle }])).values()];
-    return (
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-7xl mx-auto space-y-8">
-        <div className="flex items-center justify-between"><div className="flex items-center gap-4"><button onClick={()=>setActiveView('dashboard')} className="p-2 hover:bg-white border rounded-xl"><ChevronLeft className="h-5 w-5" /></button><div><h1 className="text-2xl font-bold">Schedule Management</h1><p className="text-slate-500">View all scheduled lessons</p></div></div><div className="flex gap-3"><button onClick={()=>setScheduleView('calendar')} className={`px-4 py-2 rounded-xl text-sm font-bold ${scheduleView==='calendar' ? 'bg-indigo-600 text-white' : 'bg-white border'}`}>Calendar</button><button onClick={()=>setScheduleView('list')} className={`px-4 py-2 rounded-xl text-sm font-bold ${scheduleView==='list' ? 'bg-indigo-600 text-white' : 'bg-white border'}`}>List View</button><button onClick={()=>setShowScheduleModal(true)} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold shadow-md"><Plus className="h-4 w-4" />New Lesson</button></div></div>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4"><div className="bg-white p-5 rounded-3xl border"><p className="text-xs font-bold text-slate-400">Total Lessons</p><p className="text-2xl font-bold">{allLessons.length}</p></div><div className="bg-white p-5 rounded-3xl border"><p className="text-xs font-bold text-slate-400">This Week</p><p className="text-2xl font-bold text-indigo-600">{allLessons.filter(l => { const d = new Date(l.date); const ws = startOfWeek(new Date()); const we = endOfWeek(new Date()); return d >= ws && d <= we; }).length}</p></div><div className="bg-white p-5 rounded-3xl border"><p className="text-xs font-bold text-slate-400">Upcoming</p><p className="text-2xl font-bold text-emerald-600">{allLessons.filter(l => new Date(l.date) > new Date()).length}</p></div><div className="bg-white p-5 rounded-3xl border"><p className="text-xs font-bold text-slate-400">Total Students</p><p className="text-2xl font-bold text-blue-600">{allLessons.reduce((s,l) => s + (l.enrolledCount||0), 0)}</p></div></div>
-        <div className="bg-white p-5 rounded-3xl border"><div className="flex flex-col md:flex-row gap-4 items-center"><div className="flex items-center gap-2"><Filter className="h-4 w-4 text-slate-400" /><span className="text-sm">Filter by:</span></div><select value={filterTutor} onChange={e=>setFilterTutor(e.target.value)} className="px-4 py-2 bg-slate-50 rounded-xl"><option value="all">All Tutors</option>{uniqueTutors.map(t=> <option key={t.id} value={t.id}>{t.name}</option>)}</select><select value={filterCourse} onChange={e=>setFilterCourse(e.target.value)} className="px-4 py-2 bg-slate-50 rounded-xl"><option value="all">All Courses</option>{uniqueCourses.map(c=> <option key={c.id} value={c.id}>{c.title}</option>)}</select></div></div>
-        {scheduleView === 'calendar' ? (<div className="grid grid-cols-1 lg:grid-cols-3 gap-8"><div className="lg:col-span-2 bg-white rounded-3xl border p-6"><Calendar onChange={setSelectedDate} value={selectedDate} tileContent={tileContent} className="w-full border-none" /></div><div className="bg-white rounded-3xl border overflow-hidden"><div className="p-6 border-b bg-slate-50"><div className="flex items-center gap-2"><CalendarIcon className="h-5 w-5 text-indigo-600" /><h3 className="font-bold">{format(selectedDate, 'EEEE, MMMM d, yyyy')}</h3></div></div><div className="p-6 space-y-4 max-h-[500px] overflow-y-auto">{filteredLessons.length>0 ? filteredLessons.map(l=> (<div key={l._id} className="p-4 bg-slate-50 rounded-2xl border"><h4 className="font-bold">{l.title}</h4><p className="text-xs text-slate-500">{l.courseTitle}</p><div className="flex items-center gap-2 text-xs text-slate-500 mt-2"><Clock className="h-3 w-3" /><span>{formatTime(l.date)}</span><span>•</span><span>{l.duration} min</span></div>{l.meetingLink && <a href={l.meetingLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 mt-2">Join Session <ExternalLink className="h-3 w-3" /></a>}</div>)) : (<div className="text-center py-12"><CalendarIcon className="h-12 w-12 text-slate-300 mx-auto mb-4" /><p>No lessons scheduled</p><button onClick={()=>setShowScheduleModal(true)} className="mt-4 text-indigo-600 text-sm font-bold">Schedule a lesson</button></div>)}</div></div></div>) : (<div className="bg-white rounded-3xl border overflow-hidden"><div className="p-6 border-b bg-slate-50"><h2 className="text-lg font-bold">All Scheduled Lessons</h2></div><div className="divide-y">{allLessons.length===0 ? (<div className="p-12 text-center"><CalendarIcon className="h-12 w-12 text-slate-300 mx-auto mb-4" /><p>No lessons scheduled yet</p><button onClick={()=>setShowScheduleModal(true)} className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold">Create New Lesson</button></div>) : (allLessons.sort((a,b)=>new Date(a.date)-new Date(b.date)).map(l=> (<div key={l._id} className="p-6 hover:bg-slate-50"><div className="flex flex-col md:flex-row justify-between gap-4"><div className="flex items-start gap-4"><div className="w-12 h-12 rounded-2xl bg-indigo-100 flex items-center justify-center text-indigo-600"><Video className="h-6 w-6" /></div><div><h3 className="font-bold text-lg">{l.title}</h3><p className="text-sm text-slate-500">{l.courseTitle}</p><p className="text-sm text-slate-500">Tutor: {l.tutorName}</p><div className="flex flex-wrap gap-3 mt-2 text-xs text-slate-500"><span className="flex items-center gap-1"><CalendarIcon className="h-3 w-3" />{new Date(l.date).toLocaleDateString()}</span><span className="flex items-center gap-1"><Clock className="h-3 w-3" />{formatTime(l.date)}</span><span className="flex items-center gap-1"><Clock className="h-3 w-3" />{l.duration} min</span><span className="flex items-center gap-1"><Users className="h-3 w-3" />{l.enrolledCount||0} enrolled</span></div></div></div><div className="flex gap-3">{l.meetingLink && new Date(l.date) > new Date() && <a href={l.meetingLink} target="_blank" rel="noopener noreferrer" className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold">Join Session</a>}<button className="p-2 text-slate-400 hover:bg-slate-100 rounded-lg"><Edit3 className="h-5 w-5" /></button><button className="p-2 text-rose-400 hover:bg-rose-50 rounded-lg"><Trash2 className="h-5 w-5" /></button></div></div></div>)))}</div></div>)}
-      </motion.div>
-    );
-  };
-
   // Main render
   if (loading) return (<div className="min-h-screen bg-slate-50 flex items-center justify-center"><div className="w-16 h-16 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div></div>);
 
@@ -2263,12 +2403,12 @@ const AdminDashboard = () => {
             <p className="px-2 mb-2 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Main Menu</p>
             {[
               { name: 'Dashboard', view: 'dashboard', icon: Layout },
-              { name: 'Schedule', view: 'schedule', icon: CalendarIcon },
+              { name: 'User Management', view: 'users', icon: Shield },
               { name: 'Tutors', view: 'tutors', icon: Users },
               { name: 'Courses', view: 'courses', icon: BookOpen },
-              { name: 'Messages', view: 'messages', icon: MessageSquare },
+              { name: 'Schedule', view: 'schedule', icon: CalendarIcon },
               { name: 'Resources', view: 'resources', icon: FileText },
-              { name: 'User Management', view: 'users', icon: Shield }
+              { name: 'Messages', view: 'messages', icon: MessageSquare }
             ].map(link => {
               const isActive = activeView === link.view;
               const Icon = link.icon;
@@ -2305,7 +2445,23 @@ const AdminDashboard = () => {
                 onBack={() => setActiveView('dashboard')}
               />
             )}
-            {activeView === 'schedule' && <ScheduleManagementView key="schedule" />}
+            {activeView === 'schedule' && (
+              <ScheduleManagementView
+                selectedDate={selectedDate}
+                setSelectedDate={setSelectedDate}
+                allLessons={allLessons}
+                scheduleView={scheduleView}
+                setScheduleView={setScheduleView}
+                filterTutor={filterTutor}
+                setFilterTutor={setFilterTutor}
+                filterCourse={filterCourse}
+                setFilterCourse={setFilterCourse}
+                setShowScheduleModal={setShowScheduleModal}
+                tileContent={tileContent}
+                formatTime={formatTime}
+                setActiveView={setActiveView}
+              />
+            )}
             {activeView === 'courses' && <CourseManagement onBack={() => setActiveView('dashboard')} key="courses" />}
             {activeView === 'messages' && <AdminMessages onBack={() => setActiveView('dashboard')} key="messages" />}
             {activeView === 'resources' && <ResourceManagement onBack={() => setActiveView('dashboard')} key="resources" />}
