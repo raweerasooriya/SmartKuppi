@@ -482,6 +482,14 @@ const ResourceManagement = ({ onBack }) => {
   const [tutorFilter, setTutorFilter] = useState('all');
   const [tutors, setTutors] = useState([]);
 
+  // Edit/Delete state
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingResource, setEditingResource] = useState(null);
+  const [editForm, setEditForm] = useState({ title: '', description: '', fileType: 'other' });
+  const [editFormError, setEditFormError] = useState('');
+  const [editSubmitting, setEditSubmitting] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(null);
+
   const fetchResources = async () => {
     setLoading(true);
     try {
@@ -491,6 +499,7 @@ const ResourceManagement = ({ onBack }) => {
     } catch (error) { console.error(error); }
     setLoading(false);
   };
+
   const fetchTutors = async () => {
     try {
       const res = await fetch(`${API_BASE_URL}/admin/tutors`, { headers: { Authorization: `Bearer ${getToken()}` } });
@@ -498,6 +507,7 @@ const ResourceManagement = ({ onBack }) => {
       if (data.success) setTutors(data.data);
     } catch (error) { console.error(error); }
   };
+
   useEffect(() => { fetchResources(); fetchTutors(); }, []);
 
   const filteredResources = resources.filter(r => {
@@ -505,21 +515,277 @@ const ResourceManagement = ({ onBack }) => {
     const matchType = typeFilter === 'all' || r.fileType === typeFilter;
     const matchTutor = tutorFilter === 'all' || r.course?.tutor?._id === tutorFilter;
     let matchDate = true;
-    if (dateFilter === 'week') matchDate = new Date(r.createdAt) > new Date(Date.now() - 7*86400000);
-    else if (dateFilter === 'month') matchDate = new Date(r.createdAt) > new Date(Date.now() - 30*86400000);
+    if (dateFilter === 'week') matchDate = new Date(r.createdAt) > new Date(Date.now() - 7 * 86400000);
+    else if (dateFilter === 'month') matchDate = new Date(r.createdAt) > new Date(Date.now() - 30 * 86400000);
     return matchSearch && matchType && matchTutor && matchDate;
   });
 
+  const handleDeleteResource = async (resourceId) => {
+    if (!window.confirm('Are you sure you want to permanently delete this resource? This action cannot be undone.')) return;
+    const token = getToken();
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/resources/${resourceId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchResources();
+      } else {
+        alert(data.message || 'Failed to delete resource');
+      }
+    } catch (error) {
+      console.error('Error deleting resource:', error);
+      alert('Network error');
+    }
+    setDropdownOpen(null);
+  };
+
+  const openEditModal = (resource) => {
+    setEditingResource(resource);
+    setEditForm({
+      title: resource.title,
+      description: resource.description || '',
+      fileType: resource.fileType
+    });
+    setShowEditModal(true);
+    setDropdownOpen(null);
+  };
+
+  const handleUpdateResource = async (e) => {
+    e.preventDefault();
+    if (!editForm.title.trim()) {
+      setEditFormError('Title is required');
+      return;
+    }
+    setEditSubmitting(true);
+    const token = getToken();
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/resources/${editingResource._id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          title: editForm.title,
+          description: editForm.description,
+          fileType: editForm.fileType
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setShowEditModal(false);
+        fetchResources();
+      } else {
+        setEditFormError(data.message || 'Failed to update resource');
+      }
+    } catch (error) {
+      setEditFormError('Network error. Please try again.');
+    } finally {
+      setEditSubmitting(false);
+    }
+  };
+
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-7xl mx-auto space-y-8">
-      <div className="flex items-center gap-4"><button onClick={onBack} className="p-2 hover:bg-white border rounded-xl"><ChevronLeft className="h-5 w-5" /></button><div><h1 className="text-2xl font-bold">Resource Management</h1><p className="text-slate-500">View all learning resources</p></div></div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4"><div className="bg-white p-5 rounded-3xl border"><p className="text-xs font-bold text-slate-400">Total Resources</p><p className="text-2xl font-bold">{resources.length}</p></div><div className="bg-white p-5 rounded-3xl border"><p className="text-xs font-bold text-slate-400">PDFs</p><p className="text-2xl font-bold text-rose-600">{resources.filter(r => r.fileType === 'pdf').length}</p></div><div className="bg-white p-5 rounded-3xl border"><p className="text-xs font-bold text-slate-400">Videos</p><p className="text-2xl font-bold text-blue-600">{resources.filter(r => r.fileType === 'video').length}</p></div><div className="bg-white p-5 rounded-3xl border"><p className="text-xs font-bold text-slate-400">Total Downloads</p><p className="text-2xl font-bold text-emerald-600">{resources.reduce((s,r) => s + (r.downloads||0), 0)}</p></div></div>
-      <div className="bg-white p-5 rounded-3xl border"><div className="flex flex-wrap gap-4"><div className="flex-1 relative"><Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" /><input type="text" placeholder="Search resources..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-11 pr-4 py-3 bg-slate-50 rounded-xl" /></div><select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="px-4 py-3 bg-slate-50 rounded-xl"><option value="all">All Types</option><option value="pdf">PDF</option><option value="video">Video</option><option value="image">Image</option><option value="other">Other</option></select><select value={dateFilter} onChange={e => setDateFilter(e.target.value)} className="px-4 py-3 bg-slate-50 rounded-xl"><option value="all">All Time</option><option value="week">Last 7 days</option><option value="month">Last 30 days</option></select><select value={tutorFilter} onChange={e => setTutorFilter(e.target.value)} className="px-4 py-3 bg-slate-50 rounded-xl"><option value="all">All Tutors</option>{tutors.map(t => <option key={t._id} value={t._id}>{t.name}</option>)}</select></div></div>
-      {loading ? (<div className="flex justify-center py-12"><div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div></div>) : (
-        <div className="bg-white rounded-3xl border shadow-sm overflow-hidden"><div className="overflow-x-auto"><table className="w-full"><thead className="bg-slate-50"><tr><th className="px-6 py-4 text-left text-[10px] font-bold">Resource</th><th className="px-6 py-4 text-left text-[10px] font-bold">Course / Tutor</th><th className="px-6 py-4 text-left text-[10px] font-bold">Type</th><th className="px-6 py-4 text-left text-[10px] font-bold">Size</th><th className="px-6 py-4 text-left text-[10px] font-bold">Downloads</th><th className="px-6 py-4 text-left text-[10px] font-bold">Uploaded</th><th className="px-6 py-4 text-right text-[10px] font-bold">Actions</th></tr></thead><tbody className="divide-y">{filteredResources.map(r => (<tr key={r._id} className="hover:bg-slate-50"><td className="px-6 py-4"><div className="flex items-center gap-3"><FileText className="h-5 w-5 text-slate-500" /><div><p className="font-bold">{r.title}</p><p className="text-xs text-slate-500">{r.description?.slice(0,60)}</p></div></div></td><td className="px-6 py-4"><div><p className="text-sm font-medium">{r.course?.title}</p><p className="text-xs text-slate-500">by {r.course?.tutor?.name}</p></div></td><td className="px-6 py-4"><span className="px-2 py-1 bg-slate-100 text-slate-600 text-xs rounded-full uppercase">{r.fileType}</span></td><td className="px-6 py-4 text-sm">{r.fileSize || 'N/A'}</td><td className="px-6 py-4 text-sm">{r.downloads || 0}</td><td className="px-6 py-4 text-sm">{new Date(r.createdAt).toLocaleDateString()}</td><td className="px-6 py-4 text-right"><div className="flex justify-end gap-2">
-          <a href={`${API_BASE_URL}${r.fileUrl}`} target="_blank" rel="noopener noreferrer" className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg"><Download className="h-4 w-4" /></a>
-        <button className="p-2 text-slate-400 hover:bg-slate-100 rounded-lg"><MoreVertical className="h-4 w-4" /></button></div></td></tr>))}</tbody></table></div></div>
+      <div className="flex items-center gap-4">
+        <button onClick={onBack} className="p-2 hover:bg-white border rounded-xl"><ChevronLeft className="h-5 w-5" /></button>
+        <div>
+          <h1 className="text-2xl font-bold">Resource Management</h1>
+          <p className="text-slate-500">View all learning resources</p>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-white p-5 rounded-3xl border"><p className="text-xs font-bold text-slate-400">Total Resources</p><p className="text-2xl font-bold">{resources.length}</p></div>
+        <div className="bg-white p-5 rounded-3xl border"><p className="text-xs font-bold text-slate-400">PDFs</p><p className="text-2xl font-bold text-rose-600">{resources.filter(r => r.fileType === 'pdf').length}</p></div>
+        <div className="bg-white p-5 rounded-3xl border"><p className="text-xs font-bold text-slate-400">Videos</p><p className="text-2xl font-bold text-blue-600">{resources.filter(r => r.fileType === 'video').length}</p></div>
+        <div className="bg-white p-5 rounded-3xl border"><p className="text-xs font-bold text-slate-400">Total Downloads</p><p className="text-2xl font-bold text-emerald-600">{resources.reduce((s, r) => s + (r.downloads || 0), 0)}</p></div>
+      </div>
+
+      {/* Filters */}
+      <div className="bg-white p-5 rounded-3xl border">
+        <div className="flex flex-wrap gap-4">
+          <div className="flex-1 relative">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <input type="text" placeholder="Search resources..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-11 pr-4 py-3 bg-slate-50 rounded-xl" />
+          </div>
+          <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="px-4 py-3 bg-slate-50 rounded-xl">
+            <option value="all">All Types</option><option value="pdf">PDF</option><option value="video">Video</option><option value="image">Image</option><option value="other">Other</option>
+          </select>
+          <select value={dateFilter} onChange={e => setDateFilter(e.target.value)} className="px-4 py-3 bg-slate-50 rounded-xl">
+            <option value="all">All Time</option><option value="week">Last 7 days</option><option value="month">Last 30 days</option>
+          </select>
+          <select value={tutorFilter} onChange={e => setTutorFilter(e.target.value)} className="px-4 py-3 bg-slate-50 rounded-xl">
+            <option value="all">All Tutors</option>
+            {tutors.map(t => <option key={t._id} value={t._id}>{t.name}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* Table */}
+      {loading ? (
+        <div className="flex justify-center py-12"><div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div></div>
+      ) : (
+        <div className="bg-white rounded-3xl border shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="px-6 py-4 text-left text-[10px] font-bold">Resource</th>
+                  <th className="px-6 py-4 text-left text-[10px] font-bold">Course / Tutor</th>
+                  <th className="px-6 py-4 text-left text-[10px] font-bold">Type</th>
+                  <th className="px-6 py-4 text-left text-[10px] font-bold">Uploaded</th>
+                  <th className="px-6 py-4 text-right text-[10px] font-bold">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {filteredResources.map(r => (
+                  <tr key={r._id} className="hover:bg-slate-50">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <FileText className="h-5 w-5 text-slate-500" />
+                        <div>
+                          <p className="font-bold text-slate-900">{r.title}</p>
+                          <p className="text-xs text-slate-500">{r.description?.slice(0, 60)}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div>
+                        <p className="text-sm font-medium">{r.course?.title}</p>
+                        <p className="text-xs text-slate-500">by {r.course?.tutor?.name}</p>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4"><span className="px-2 py-1 bg-slate-100 text-slate-600 text-xs rounded-full uppercase">{r.fileType}</span></td>
+                    <td className="px-6 py-4 text-sm">{new Date(r.createdAt).toLocaleDateString()}</td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        {/* Download icon */}
+                        <a
+                          href={`${API_BASE_URL}${r.fileUrl}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg"
+                        >
+                          <Download className="h-4 w-4" />
+                        </a>
+                        {/* Dropdown button */}
+                        <div className="relative">
+                          <button
+                            onClick={() => setDropdownOpen(dropdownOpen === r._id ? null : r._id)}
+                            className="p-2 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors"
+                          >
+                            <MoreVertical className="h-4 w-4" />
+                          </button>
+                          {dropdownOpen === r._id && (
+                            <div className="absolute right-0 mt-2 w-36 bg-white rounded-lg shadow-lg border border-slate-100 py-1 z-10">
+                              <button onClick={() => openEditModal(r)} className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
+                                <Edit2 className="h-4 w-4" /> Edit
+                              </button>
+                              <button onClick={() => handleDeleteResource(r._id)} className="w-full px-4 py-2 text-left text-sm text-rose-600 hover:bg-rose-50 flex items-center gap-2">
+                                <Trash2 className="h-4 w-4" /> Delete
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
+
+      {/* Edit Resource Modal */}
+      <AnimatePresence>
+        {showEditModal && editingResource && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4"
+            onClick={() => setShowEditModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              onClick={e => e.stopPropagation()}
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden"
+            >
+              <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 px-6 py-4">
+                <div className="flex justify-between items-center">
+                  <h2 className="text-xl font-bold text-white">Edit Resource</h2>
+                  <button onClick={() => setShowEditModal(false)} className="p-2 hover:bg-white/10 rounded-xl">
+                    <X className="h-5 w-5 text-white" />
+                  </button>
+                </div>
+              </div>
+              <form onSubmit={handleUpdateResource} className="p-6 space-y-4">
+                {editFormError && (
+                  <div className="bg-rose-50 border border-rose-200 p-3 rounded-xl text-rose-600 text-sm">
+                    {editFormError}
+                  </div>
+                )}
+                <div>
+                  <label className="text-xs font-bold uppercase mb-1 block">Resource Title *</label>
+                  <input
+                    type="text"
+                    value={editForm.title}
+                    onChange={e => setEditForm({ ...editForm, title: e.target.value })}
+                    className="w-full px-4 py-3 bg-slate-50 rounded-xl focus:border-indigo-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold uppercase mb-1 block">Description (optional)</label>
+                  <textarea
+                    rows={3}
+                    value={editForm.description}
+                    onChange={e => setEditForm({ ...editForm, description: e.target.value })}
+                    className="w-full px-4 py-3 bg-slate-50 rounded-xl resize-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold uppercase mb-1 block">File Type</label>
+                  <select
+                    value={editForm.fileType}
+                    onChange={e => setEditForm({ ...editForm, fileType: e.target.value })}
+                    className="w-full px-4 py-3 bg-slate-50 rounded-xl focus:border-indigo-500 focus:outline-none"
+                  >
+                    <option value="pdf">PDF</option>
+                    <option value="video">Video</option>
+                    <option value="image">Image</option>
+                    <option value="link">Link (URL)</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+                <div className="flex gap-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowEditModal(false)}
+                    className="flex-1 py-3 bg-white border-2 border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={editSubmitting}
+                    className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl flex items-center justify-center gap-2 disabled:opacity-70"
+                  >
+                    {editSubmitting ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <Save className="h-4 w-4" />}
+                    {editSubmitting ? 'Updating...' : 'Update Resource'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 };
@@ -903,6 +1169,17 @@ const UserManagement = ({ onBack }) => {
     password: '',
     confirmPassword: ''
   });
+
+  // Edit Resource Modal State
+  const [editingResource, setEditingResource] = useState(null);
+  const [editForm, setEditForm] = useState({
+    title: '',
+    description: '',
+    fileType: 'other'
+  });
+  const [editFormError, setEditFormError] = useState('');
+  const [editSubmitting, setEditSubmitting] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(null); // track which resource's dropdown is open
 
   const universities = [
     'Sri Lanka Institute of Information Technology - SLIIT',
@@ -2500,7 +2777,9 @@ const AdminDashboard = () => {
         })}
       </div></div>
       {/* Pending Approvals Table (short) */}
-      <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden"><div className="p-6 border-b flex justify-between"><div><h2 className="text-lg font-bold">Pending Tutor Approvals</h2><p className="text-sm text-slate-500">Review and approve new tutor applications</p></div><button onClick={() => setActiveView('tutors')} className="text-indigo-600 text-sm font-semibold flex items-center">View All <ArrowUpRight className="h-4 w-4 ml-1" /></button></div><div className="overflow-x-auto">{pendingTutors.length > 0 ? (<table className="w-full"><thead><tr className="bg-slate-50/50"><th className="px-6 py-4 text-[10px] font-bold">Tutor</th><th className="px-6 py-4 text-[10px] font-bold">Specialization</th><th className="px-6 py-4 text-[10px] font-bold text-right">Actions</th></tr></thead><tbody>{pendingTutors.slice(0,4).map(tutor => (<tr key={tutor._id} className="hover:bg-slate-50"><td className="px-6 py-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">{getInitials(tutor.name)}</div><div><p className="text-sm font-semibold">{tutor.name}</p><p className="text-[10px] text-slate-400">{tutor.email}</p></div></div></td><td className="px-6 py-4">{tutor.specialization}</td><td className="px-6 py-4 text-right"><div className="flex justify-end gap-2"><button onClick={() => handleTutorStatusChange(tutor._id, 'approved')} className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg"><CheckCircle className="h-5 w-5" /></button><button onClick={() => handleTutorStatusChange(tutor._id, 'suspended')} className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg"><XCircle className="h-5 w-5" /></button><button onClick={() => { setSelectedTutor(tutor); setShowDetailsModal(true); }} className="p-2 text-slate-400 hover:bg-slate-100 rounded-lg"><MoreVertical className="h-5 w-5" /></button></div></td></tr>))}</tbody></table>) : (<div className="p-12 text-center"><div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4"><UserCheck className="h-8 w-8 text-slate-400" /></div><p className="text-slate-500">No pending tutor approvals</p></div>)}</div></div>
+      <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden"><div className="p-6 border-b flex justify-between"><div><h2 className="text-lg font-bold">Pending Tutor Approvals</h2><p className="text-sm text-slate-500">Review and approve new tutor applications</p></div><button onClick={() => setActiveView('tutors')} className="text-indigo-600 text-sm font-semibold flex items-center">View All <ArrowUpRight className="h-4 w-4 ml-1" /></button></div><div className="overflow-x-auto">{pendingTutors.length > 0 ? (<table className="w-full"><thead><tr className="bg-slate-50/50"><th className="px-6 py-4 text-[10px] font-bold">Tutor</th><th className="px-6 py-4 text-[10px] font-bold">Specialization</th><th className="px-6 py-4 text-[10px] font-bold text-right">Actions</th></tr></thead><tbody>{pendingTutors.slice(0,4).map(tutor => (<tr key={tutor._id} className="hover:bg-slate-50"><td className="px-6 py-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">{getInitials(tutor.name)}</div><div><p className="text-sm font-semibold">{tutor.name}</p><p className="text-[10px] text-slate-400">{tutor.email}</p></div></div></td><td className="px-6 py-4">{tutor.specialization}</td><td className="px-6 py-4 text-right">
+        <div className="flex justify-end gap-2">
+        <button onClick={() => handleTutorStatusChange(tutor._id, 'approved')} className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg"><CheckCircle className="h-5 w-5" /></button><button onClick={() => handleTutorStatusChange(tutor._id, 'suspended')} className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg"><XCircle className="h-5 w-5" /></button><button onClick={() => { setSelectedTutor(tutor); setShowDetailsModal(true); }} className="p-2 text-slate-400 hover:bg-slate-100 rounded-lg"><MoreVertical className="h-5 w-5" /></button></div></td></tr>))}</tbody></table>) : (<div className="p-12 text-center"><div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4"><UserCheck className="h-8 w-8 text-slate-400" /></div><p className="text-slate-500">No pending tutor approvals</p></div>)}</div></div>
     </motion.div>
   );
 
