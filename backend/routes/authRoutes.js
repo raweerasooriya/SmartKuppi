@@ -12,7 +12,8 @@ const {
   registerTutor,
   login,
   getMe,
-  checkEmail
+  checkEmail,
+  getAdmins  
 } = authController;
 
 const {
@@ -77,4 +78,5 @@ router.post('/forgot-password', forgotPassword);
 router.post('/verify-otp', verifyOTP);
 router.post('/reset-password', resetPassword);
 
+router.get('/admins', protect, getAdmins); 
 module.exports = router;

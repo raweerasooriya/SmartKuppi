@@ -61,6 +61,10 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [loadingMessages, setLoadingMessages] = useState(true);
   const selectedIdRef = useRef(null);
+  // New chat with admin
+  const [showNewAdminChat, setShowNewAdminChat] = useState(false);
+  const [admins, setAdmins] = useState([]);
+  const [loadingAdmins, setLoadingAdmins] = useState(false);
   
   // Schedule state
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -332,6 +336,45 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
       setLoadingMessages(false);
     }
   }, []);
+
+  const fetchAdmins = async () => {
+  setLoadingAdmins(true);
+  const token = localStorage.getItem('token');
+  try {
+      const res = await fetch(`${API_BASE_URL}/auth/admins`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) setAdmins(data.data);
+    } catch (error) {
+      console.error('Error fetching admins:', error);
+    } finally {
+      setLoadingAdmins(false);
+    }
+  };
+
+  const handleStartAdminChat = (admin) => {
+  // Check if conversation already exists
+  const existing = conversations.find(c => c.otherUser._id === admin._id);
+  if (existing) {
+    setSelectedConversation(existing);
+    selectedIdRef.current = existing.id;
+  } else {
+    // Create a temporary conversation object
+    const tempConv = {
+        id: `temp-${admin._id}`,
+        otherUser: admin,
+        course: null,
+        messages: [],
+        lastMessage: null,
+        unreadCount: 0
+      };
+      setConversations(prev => [tempConv, ...prev]);
+      setSelectedConversation(tempConv);
+      selectedIdRef.current = tempConv.id;
+    }
+    setShowNewAdminChat(false);
+  };
 
   const goToResources = () => {
   setActiveView('resources');
@@ -1214,11 +1257,22 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
     }
     return (
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-7xl mx-auto space-y-6 p-4">
-        <div className="flex items-center gap-4">
-          <button onClick={goToDashboard} className="p-2 hover:bg-white border rounded-xl transition-all text-slate-500">
-            <ChevronLeft className="h-5 w-5" />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <button onClick={goToDashboard} className="p-2 hover:bg-white border rounded-xl transition-all text-slate-500">
+              <ChevronLeft className="h-5 w-5" />
+            </button>
+            <h1 className="text-2xl font-bold text-slate-900">Tutor Messages</h1>
+          </div>
+          <button
+            onClick={() => {
+              fetchAdmins();
+              setShowNewAdminChat(true);
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold shadow-md hover:bg-indigo-700 transition-all"
+          >
+            <Plus className="h-4 w-4" /> New Chat
           </button>
-          <h1 className="text-2xl font-bold text-slate-900">Tutor Messages</h1>
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-1 bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden h-[600px] flex flex-col">
@@ -1234,14 +1288,22 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
                     className={`w-full p-4 text-left hover:bg-slate-50 transition-all ${selectedConversation?.id === conv.id ? 'bg-indigo-50 border-r-4 border-indigo-600' : ''}`}
                   >
                     <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center flex-shrink-0"><User className="text-slate-500" size={20}/></div>
+                      <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center flex-shrink-0">
+                        <User className="text-slate-500" size={20} />
+                      </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex justify-between items-center">
                           <p className="font-bold text-slate-900 truncate">{conv.otherUser.name}</p>
-                          <span className="text-[10px] text-slate-400">{formatDate(conv.lastMessage.createdAt)}</span>
+                          <span className="text-[10px] text-slate-400">
+                            {conv.lastMessage ? formatDate(conv.lastMessage.createdAt) : 'New'}
+                          </span>
                         </div>
-                        <p className="text-xs text-indigo-600 truncate flex items-center gap-1"><BookOpen size={12}/> {conv.course?.title}</p>
-                        <p className="text-sm text-slate-500 truncate mt-1">{conv.lastMessage.content}</p>
+                        <p className="text-xs text-indigo-600 truncate flex items-center gap-1">
+                          <BookOpen size={12} /> {conv.course?.title || 'Admin Chat'}
+                        </p>
+                        <p className="text-sm text-slate-500 truncate mt-1">
+                          {conv.lastMessage ? conv.lastMessage.content : 'No messages yet'}
+                        </p>
                       </div>
                     </div>
                   </button>
@@ -1263,6 +1325,64 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
             )}
           </div>
         </div>
+        {/* New Chat with Admin Modal */}
+          <AnimatePresence>
+            {showNewAdminChat && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4"
+                onClick={() => setShowNewAdminChat(false)}
+              >
+                <motion.div
+                  initial={{ scale: 0.95, opacity: 0, y: 20 }}
+                  animate={{ scale: 1, opacity: 1, y: 0 }}
+                  exit={{ scale: 0.95, opacity: 0, y: 20 }}
+                  onClick={e => e.stopPropagation()}
+                  className="bg-white rounded-3xl shadow-2xl w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col"
+                >
+                  <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 px-6 py-4">
+                    <div className="flex justify-between items-center">
+                      <h2 className="text-xl font-bold text-white">Start New Chat</h2>
+                      <button onClick={() => setShowNewAdminChat(false)} className="p-2 hover:bg-white/10 rounded-xl">
+                        <X className="h-5 w-5 text-white" />
+                      </button>
+                    </div>
+                    <p className="text-indigo-100 text-sm mt-1">Select an admin to start a conversation</p>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-4">
+                    {loadingAdmins ? (
+                      <div className="flex justify-center py-8"><div className="w-8 h-8 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div></div>
+                    ) : admins.length === 0 ? (
+                      <div className="text-center py-8 text-slate-500">No admins found</div>
+                    ) : (
+                      <div className="space-y-2">
+                        {admins.map(admin => (
+                          <button
+                            key={admin._id}
+                            onClick={() => handleStartAdminChat(admin)}
+                            className="w-full p-3 rounded-2xl border border-slate-200 hover:border-indigo-500 hover:bg-indigo-50 transition-all text-left flex items-center gap-3"
+                          >
+                            <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">
+                              {admin.name?.split(' ').map(n=>n[0]).join('').toUpperCase().slice(0,2)}
+                            </div>
+                            <div>
+                              <p className="font-bold text-slate-900">{admin.name}</p>
+                              <p className="text-xs text-slate-500">{admin.email}</p>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="border-t p-4 flex justify-end">
+                    <button onClick={() => setShowNewAdminChat(false)} className="px-4 py-2 bg-slate-100 rounded-lg text-slate-700 hover:bg-slate-200">Cancel</button>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
       </motion.div>
     );
   };
