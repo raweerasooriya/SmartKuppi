@@ -105,6 +105,15 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
   const [resourceSubmitting, setResourceSubmitting] = useState(false);
   const [resourceSuccess, setResourceSuccess] = useState(false);
   
+  // Resources view state
+  const [tutorResources, setTutorResources] = useState([]);
+  const [tutorResourcesLoading, setTutorResourcesLoading] = useState(false);
+  const [tutorSearchTerm, setTutorSearchTerm] = useState('');
+  const [tutorTypeFilter, setTutorTypeFilter] = useState('all');
+  const [tutorDateFilter, setTutorDateFilter] = useState('all');
+  const [tutorCourseFilter, setTutorCourseFilter] = useState('all');
+  const [tutorCoursesForFilter, setTutorCoursesForFilter] = useState([]);
+
   // ========== Initial auth check ==========
   useEffect(() => {
     const userData = localStorage.getItem('user');
@@ -324,6 +333,11 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
     }
   }, []);
 
+  const goToResources = () => {
+  setActiveView('resources');
+  fetchTutorResources();
+  };
+
   const fetchScheduleData = async () => {
     const token = localStorage.getItem('token');
     try {
@@ -357,6 +371,54 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
     } catch (error) {
       console.error('Error fetching schedule:', error);
       setMockScheduleData();
+    }
+  };
+
+  const fetchTutorResources = async () => {
+  setTutorResourcesLoading(true);
+  const token = localStorage.getItem('token');
+  try {
+      // Option 1: If a dedicated endpoint exists
+      const res = await fetch(`${API_BASE_URL}/tutor/resources`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTutorResources(data.data);
+        // Build course filter list from resources
+        const courses = [...new Map(data.data.map(r => [r.course?._id, { _id: r.course?._id, title: r.course?.title }])).values()];
+        setTutorCoursesForFilter(courses);
+      } else {
+        // Option 2: Fallback – fetch all courses and then resources per course
+        const coursesRes = await fetch(`${API_BASE_URL}/courses/tutor/courses`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const coursesData = await coursesRes.json();
+        if (coursesData.success) {
+          const allResources = [];
+          for (const course of coursesData.data) {
+            const resourcesRes = await fetch(`${API_BASE_URL}/resources/courses/${course._id}/resources`, {
+              headers: { Authorization: `Bearer ${token}` }
+            });
+            const resourcesData = await resourcesRes.json();
+            if (resourcesData.success) {
+              const resourcesWithCourse = resourcesData.data.map(r => ({
+                ...r,
+                course: { _id: course._id, title: course.title, tutor: course.tutor }
+              }));
+              allResources.push(...resourcesWithCourse);
+            }
+          }
+          setTutorResources(allResources);
+          // Build course filter list
+          const courses = [...new Map(allResources.map(r => [r.course?._id, { _id: r.course?._id, title: r.course?.title }])).values()];
+          setTutorCoursesForFilter(courses);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching tutor resources:', error);
+    } finally {
+      setTutorResourcesLoading(false);
     }
   };
 
@@ -1205,6 +1267,117 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
     );
   };
 
+  // Resources view
+  const renderResources = () => {
+    // Filter resources based on search, type, date, course
+    const filteredResources = tutorResources.filter(r => {
+      const matchSearch = r.title.toLowerCase().includes(tutorSearchTerm.toLowerCase()) ||
+                          (r.description || '').toLowerCase().includes(tutorSearchTerm.toLowerCase());
+      const matchType = tutorTypeFilter === 'all' || r.fileType === tutorTypeFilter;
+      const matchCourse = tutorCourseFilter === 'all' || r.course?._id === tutorCourseFilter;
+      let matchDate = true;
+      if (tutorDateFilter === 'week') matchDate = new Date(r.createdAt) > new Date(Date.now() - 7 * 86400000);
+      else if (tutorDateFilter === 'month') matchDate = new Date(r.createdAt) > new Date(Date.now() - 30 * 86400000);
+      return matchSearch && matchType && matchCourse && matchDate;
+    });
+
+    const getFileIcon = (type) => {
+      if (type === 'pdf') return <FileText className="h-5 w-5 text-rose-500" />;
+      if (type === 'video') return <Video className="h-5 w-5 text-blue-500" />;
+      return <FileText className="h-5 w-5 text-slate-500" />;
+    };
+
+    return (
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-7xl mx-auto space-y-8">
+        <div className="flex items-center gap-4">
+          <button onClick={goToDashboard} className="p-2 hover:bg-white border rounded-xl"><ChevronLeft className="h-5 w-5" /></button>
+          <div>
+            <h1 className="text-2xl font-bold">My Resources</h1>
+            <p className="text-slate-500">All learning materials you have uploaded</p>
+          </div>
+        </div>
+
+        {/* Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-white p-5 rounded-3xl border"><p className="text-xs font-bold text-slate-400">Total Resources</p><p className="text-2xl font-bold">{tutorResources.length}</p></div>
+          <div className="bg-white p-5 rounded-3xl border"><p className="text-xs font-bold text-slate-400">PDFs</p><p className="text-2xl font-bold text-rose-600">{tutorResources.filter(r => r.fileType === 'pdf').length}</p></div>
+          <div className="bg-white p-5 rounded-3xl border"><p className="text-xs font-bold text-slate-400">Videos</p><p className="text-2xl font-bold text-blue-600">{tutorResources.filter(r => r.fileType === 'video').length}</p></div>
+          <div className="bg-white p-5 rounded-3xl border"><p className="text-xs font-bold text-slate-400">Total Downloads</p><p className="text-2xl font-bold text-emerald-600">{tutorResources.reduce((s, r) => s + (r.downloads || 0), 0)}</p></div>
+        </div>
+
+        {/* Filters */}
+        <div className="bg-white p-5 rounded-3xl border">
+          <div className="flex flex-wrap gap-4">
+            <div className="flex-1 relative">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <input type="text" placeholder="Search by title or description..." value={tutorSearchTerm} onChange={e => setTutorSearchTerm(e.target.value)} className="w-full pl-11 pr-4 py-3 bg-slate-50 rounded-xl" />
+            </div>
+            <select value={tutorTypeFilter} onChange={e => setTutorTypeFilter(e.target.value)} className="px-4 py-3 bg-slate-50 rounded-xl">
+              <option value="all">All Types</option><option value="pdf">PDF</option><option value="video">Video</option><option value="image">Image</option><option value="other">Other</option>
+            </select>
+            <select value={tutorDateFilter} onChange={e => setTutorDateFilter(e.target.value)} className="px-4 py-3 bg-slate-50 rounded-xl">
+              <option value="all">All Time</option><option value="week">Last 7 days</option><option value="month">Last 30 days</option>
+            </select>
+            <select value={tutorCourseFilter} onChange={e => setTutorCourseFilter(e.target.value)} className="px-4 py-3 bg-slate-50 rounded-xl">
+              <option value="all">All Courses</option>
+              {tutorCoursesForFilter.map(c => <option key={c._id} value={c._id}>{c.title}</option>)}
+            </select>
+          </div>
+        </div>
+
+        {/* Table */}
+        {tutorResourcesLoading ? (
+          <div className="flex justify-center py-12"><div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div></div>
+        ) : (
+          <div className="bg-white rounded-3xl border shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="px-6 py-4 text-left text-[10px] font-bold">Resource</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-bold">Course</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-bold">Type</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-bold">Size</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-bold">Downloads</th>
+                    <th className="px-6 py-4 text-left text-[10px] font-bold">Uploaded</th>
+                    <th className="px-6 py-4 text-right text-[10px] font-bold">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {filteredResources.length === 0 ? (
+                    <tr><td colSpan="7" className="px-6 py-12 text-center text-slate-500">No resources found</td></tr>
+                  ) : (
+                    filteredResources.map(r => (
+                      <tr key={r._id} className="hover:bg-slate-50">
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            {getFileIcon(r.fileType)}
+                            <div>
+                              <p className="font-bold text-slate-900">{r.title}</p>
+                              <p className="text-xs text-slate-500 line-clamp-1">{r.description}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <p className="text-sm font-medium">{r.course?.title}</p>
+                        </td>
+                        <td className="px-6 py-4"><span className="px-2 py-1 bg-slate-100 text-slate-600 text-xs rounded-full uppercase">{r.fileType}</span></td>
+                        <td className="px-6 py-4 text-sm">{r.fileSize || 'N/A'}</td>
+                        <td className="px-6 py-4 text-sm">{r.downloads || 0}</td>
+                        <td className="px-6 py-4 text-sm">{new Date(r.createdAt).toLocaleDateString()}</td>
+                        <td className="px-6 py-4 text-right">
+                          <a href={`${API_BASE_URL}${r.fileUrl}`} target="_blank" rel="noopener noreferrer" className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg inline-block"><Download className="h-4 w-4" /></a>                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </motion.div>
+    );
+  };
   // Course Detail view (formerly TutorCourseDetail)
   const renderCourseDetail = () => {
     if (!courseDetail) {
@@ -1778,6 +1951,7 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
                   else if (link.view === 'schedule') goToSchedule();
                   else if (link.view === 'create-course') goToCreateCourse();
                   else if (link.view === 'messages') goToMessages();
+                  else if (link.view === 'resources') goToResources();
                 }}
                 className={`flex items-center justify-between w-full px-4 py-3 rounded-xl transition-all text-left ${
                   link.isActive ? 'bg-indigo-600/10 text-indigo-600 font-medium' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
@@ -1846,6 +2020,7 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
             {activeView === 'courseDetail' && <div key="courseDetail">{renderCourseDetail()}</div>}
             {activeView === 'lessonCreate' && <div key="lessonCreate">{renderLessonCreate()}</div>}
             {activeView === 'resourceUpload' && <div key="resourceUpload">{renderResourceUpload()}</div>}
+            {activeView === 'resources' && <div key="resources">{renderResources()}</div>}
           </AnimatePresence>
         </main>
 
