@@ -12,7 +12,7 @@ const { protect, authorize } = require('../middleware/authMiddleware');
 router.post('/courses/:courseId/lessons', protect, authorize('tutor', 'admin'), createLesson);
 router.get('/courses/:courseId/lessons', protect, getCourseLessons); // protect but check inside controller
 
-router.put('/lessons/:id', protect, authorize('tutor', 'admin'), updateLesson);
-router.delete('/lessons/:id', protect, authorize('tutor', 'admin'), deleteLesson);
+router.put('/:id', protect, authorize('tutor', 'admin'), updateLesson);
+router.delete('/:id', protect, authorize('tutor', 'admin'), deleteLesson);
 
 module.exports = router;

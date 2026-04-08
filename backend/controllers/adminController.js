@@ -155,23 +155,37 @@ exports.getAllUsers = async (req, res) => {
   }
 };
 
-// @desc    Get all tutors
+// @desc    Get all tutors with course count
 // @route   GET /api/admin/tutors
 // @access  Private (Admin only)
 exports.getTutors = async (req, res) => {
   try {
     const tutors = await User.find({ role: 'tutor' }).select('-password').sort({ createdAt: -1 });
+    const Course = require('../models/Course');
     
-    res.json({
-      success: true,
-      data: tutors
-    });
+    const tutorsWithCount = await Promise.all(tutors.map(async (tutor) => {
+      const courseCount = await Course.countDocuments({ tutor: tutor._id });
+      return {
+        _id: tutor._id,
+        name: tutor.name,
+        email: tutor.email,
+        phone: tutor.phone,
+        qualifications: tutor.qualifications,
+        specialization: tutor.specialization,
+        yearsOfExperience: tutor.yearsOfExperience,
+        status: tutor.status,
+        bio: tutor.bio,
+        linkedin: tutor.linkedin,
+        subjects: tutor.subjects,
+        createdAt: tutor.createdAt,
+        courseCount
+      };
+    }));
+    
+    res.json({ success: true, data: tutorsWithCount });
   } catch (error) {
     console.error('Error fetching tutors:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Server error' 
-    });
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 };
 
