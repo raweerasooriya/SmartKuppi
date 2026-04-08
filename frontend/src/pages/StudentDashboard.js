@@ -72,6 +72,8 @@ const StudentDashboard = () => {
   const [discussions, setDiscussions] = useState([]);
   const [newDiscussion, setNewDiscussion] = useState({ title: '', content: '' });
   const [submitting, setSubmitting] = useState(false);
+  const [replyingTo, setReplyingTo] = useState(null);        // stores discussion id being replied to
+  const [replyContent, setReplyContent] = useState('');
 
   const navigate = useNavigate();
 
@@ -432,32 +434,86 @@ const StudentDashboard = () => {
 
   // Discussions functions
   const fetchDiscussions = async () => {
-    // Mock for now
-    setTimeout(() => {
-      setDiscussions([
-        { id: 1, title: 'JavaScript Closure Explanation', content: 'Can someone explain closures with an example?', author: 'John Doe', date: '2024-03-23', replies: 3, likes: 5 },
-        { id: 2, title: 'React Hooks Best Practices', content: 'What are the best practices for using useEffect?', author: 'Jane Smith', date: '2024-03-22', replies: 2, likes: 8 },
-      ]);
-    }, 500);
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch(`${API_BASE_URL}/discussions`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) setDiscussions(data.data);
+    } catch (error) {
+      console.error('Error fetching discussions:', error);
+    }
   };
 
   const handleCreateDiscussion = async (e) => {
     e.preventDefault();
     if (!newDiscussion.title.trim() || !newDiscussion.content.trim()) return;
     setSubmitting(true);
-    setTimeout(() => {
-      setDiscussions([{
-        id: Date.now(),
-        title: newDiscussion.title,
-        content: newDiscussion.content,
-        author: 'You',
-        date: new Date().toISOString().split('T')[0],
-        replies: 0,
-        likes: 0
-      }, ...discussions]);
-      setNewDiscussion({ title: '', content: '' });
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch(`${API_BASE_URL}/discussions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(newDiscussion)
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDiscussions(prev => [data.data, ...prev]);
+        setNewDiscussion({ title: '', content: '' });
+      }
+    } catch (error) {
+      console.error('Error creating discussion:', error);
+    } finally {
       setSubmitting(false);
-    }, 500);
+    }
+  };
+
+  const handleReply = async (discussionId) => {
+  if (!replyContent.trim()) return;
+  const token = localStorage.getItem('token');
+  try {
+      const res = await fetch(`${API_BASE_URL}/discussions/${discussionId}/reply`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ content: replyContent })
+      });
+      const data = await res.json();
+      if (data.success) {
+        // Update the discussion in the local state
+        setDiscussions(prev => prev.map(d =>
+          d._id === discussionId ? data.data : d
+        ));
+        setReplyingTo(null);
+        setReplyContent('');
+      }
+    } catch (error) {
+      console.error('Error posting reply:', error);
+    }
+  };
+
+  const handleLike = async (discussionId) => {
+  const token = localStorage.getItem('token');
+    try {
+      const res = await fetch(`${API_BASE_URL}/discussions/${discussionId}/like`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDiscussions(prev => prev.map(d =>
+          d._id === discussionId ? data.data : d
+        ));
+      }
+    } catch (error) {
+      console.error('Error liking discussion:', error);
+    }
   };
 
   // Render functions for each view
@@ -1049,38 +1105,40 @@ const StudentDashboard = () => {
 
   const renderDiscussions = () => (
     <div className="max-w-7xl mx-auto space-y-8">
-      <div className="flex items-center gap-4">
-        <button onClick={goToDashboard} className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
-          <ChevronLeft className="h-5 w-5 text-slate-600" />
-        </button>
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">Discussion Forum</h1>
-          <p className="text-slate-500 mt-1">Ask questions, share knowledge, and connect with fellow students.</p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <button onClick={goToDashboard} className="p-2 hover:bg-slate-100 rounded-lg">
+            <ChevronLeft className="h-5 w-5 text-slate-600" />
+          </button>
+          <div>
+            <h1 className="text-2xl font-bold">Discussion Forum</h1>
+            <p className="text-slate-500">Ask questions, share knowledge, and connect.</p>
+          </div>
         </div>
       </div>
 
       {/* Create Discussion Form */}
-      <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
-        <h2 className="text-lg font-bold text-slate-900 mb-4">Start a Discussion</h2>
+      <div className="bg-white rounded-3xl border shadow-sm p-6">
+        <h2 className="text-lg font-bold mb-4">Start a Discussion</h2>
         <form onSubmit={handleCreateDiscussion} className="space-y-4">
           <input
             type="text"
             placeholder="Discussion title"
             value={newDiscussion.title}
             onChange={(e) => setNewDiscussion({ ...newDiscussion, title: e.target.value })}
-            className="w-full px-4 py-3 bg-slate-50 border-2 border-transparent focus:border-indigo-500 rounded-xl focus:outline-none transition-all"
+            className="w-full px-4 py-3 bg-slate-50 rounded-xl focus:border-indigo-500 focus:outline-none"
           />
           <textarea
             rows={4}
             placeholder="What would you like to discuss?"
             value={newDiscussion.content}
             onChange={(e) => setNewDiscussion({ ...newDiscussion, content: e.target.value })}
-            className="w-full px-4 py-3 bg-slate-50 border-2 border-transparent focus:border-indigo-500 rounded-xl focus:outline-none transition-all resize-none"
+            className="w-full px-4 py-3 bg-slate-50 rounded-xl resize-none focus:border-indigo-500 focus:outline-none"
           />
           <button
             type="submit"
             disabled={submitting}
-            className="inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all disabled:opacity-70"
+            className="inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 disabled:opacity-70"
           >
             {submitting ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <Send className="h-5 w-5" />}
             {submitting ? 'Posting...' : 'Post Discussion'}
@@ -1090,29 +1148,76 @@ const StudentDashboard = () => {
 
       {/* Discussions List */}
       <div className="space-y-4">
-        {discussions.map(discussion => (
-          <div key={discussion.id} className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 hover:shadow-md transition-all">
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <h3 className="text-xl font-bold text-slate-900 mb-2">{discussion.title}</h3>
-                <p className="text-slate-600 mb-4">{discussion.content}</p>
-                <div className="flex items-center gap-4 text-sm text-slate-500">
-                  <span className="flex items-center gap-1"><User className="h-4 w-4" /> {discussion.author}</span>
-                  <span className="flex items-center gap-1"><Clock className="h-4 w-4" /> {discussion.date}</span>
-                  <button className="flex items-center gap-1 hover:text-indigo-600 transition-colors">
-                    <MessageCircle className="h-4 w-4" /> {discussion.replies} replies
-                  </button>
-                  <button className="flex items-center gap-1 hover:text-indigo-600 transition-colors">
-                    <ThumbsUp className="h-4 w-4" /> {discussion.likes}
-                  </button>
+        {discussions.length === 0 ? (
+          <div className="bg-white rounded-3xl border p-12 text-center text-slate-500">
+            No discussions yet. Be the first to start one!
+          </div>
+        ) : (
+          discussions.map((discussion) => (
+            <div key={discussion._id} className="bg-white rounded-3xl border shadow-sm p-6 hover:shadow-md transition-all">
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <h3 className="text-xl font-bold text-slate-900 mb-2">{discussion.title}</h3>
+                  <p className="text-slate-600 mb-4">{discussion.content}</p>
+                  <div className="flex items-center gap-4 text-sm text-slate-500">
+                    <span className="flex items-center gap-1">
+                      <User className="h-4 w-4" /> {discussion.author?.name || 'Unknown'}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Clock className="h-4 w-4" /> {new Date(discussion.createdAt).toLocaleDateString()}
+                    </span>
+                    <button
+                      onClick={() => handleLike(discussion._id)}
+                      className="flex items-center gap-1 hover:text-indigo-600 transition-colors"
+                    >
+                      <ThumbsUp className="h-4 w-4" /> {discussion.likes?.length || 0}
+                    </button>
+                    <button
+                      onClick={() => setReplyingTo(replyingTo === discussion._id ? null : discussion._id)}
+                      className="flex items-center gap-1 hover:text-indigo-600 transition-colors"
+                    >
+                      <MessageCircle className="h-4 w-4" /> {discussion.replies?.length || 0} replies
+                    </button>
+                  </div>
+
+                  {/* Replies Section */}
+                  {discussion.replies && discussion.replies.length > 0 && (
+                    <div className="mt-4 pl-6 border-l-2 border-slate-100 space-y-3">
+                      {discussion.replies.map((reply, idx) => (
+                        <div key={idx} className="text-sm">
+                          <span className="font-semibold">{reply.author?.name || 'User'}</span>
+                          <p className="text-slate-600 mt-1">{reply.content}</p>
+                          <span className="text-[10px] text-slate-400">
+                            {new Date(reply.createdAt).toLocaleString()}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Reply Form */}
+                  {replyingTo === discussion._id && (
+                    <div className="mt-4 flex gap-2">
+                      <input
+                        type="text"
+                        value={replyContent}
+                        onChange={(e) => setReplyContent(e.target.value)}
+                        placeholder="Write your reply..."
+                        className="flex-1 px-4 py-2 bg-slate-50 rounded-xl focus:border-indigo-500 focus:outline-none"
+                      />
+                      <button
+                        onClick={() => handleReply(discussion._id)}
+                        className="px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700"
+                      >
+                        Reply
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
-              <button className="px-4 py-2 text-indigo-600 font-bold text-sm hover:bg-indigo-50 rounded-xl transition-colors">
-                Reply
-              </button>
             </div>
-          </div>
-        ))}
+          ))
+        )}
       </div>
     </div>
   );

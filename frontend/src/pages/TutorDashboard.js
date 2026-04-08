@@ -11,7 +11,7 @@ import {
   Settings, LogOut, Menu, X, FileText, Search, Star, AlertCircle,
   ChevronDown, Mail, Phone, Award, CheckCircle, XCircle, GraduationCap,
   FolderOpen, Inbox, Edit3, Upload, ExternalLink, MoreVertical,
-  Save, ChevronLeft, Filter, Link as LinkIcon, Play, User, Download
+  Save, ChevronLeft, Filter, Link as LinkIcon, Play, User, Download, Send, ThumbsUp
 } from 'lucide-react';
 import CourseCardHeader from '../components/CourseCardHeader';
 import MessageThread from '../components/MessageThread';
@@ -117,6 +117,13 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
   const [tutorDateFilter, setTutorDateFilter] = useState('all');
   const [tutorCourseFilter, setTutorCourseFilter] = useState('all');
   const [tutorCoursesForFilter, setTutorCoursesForFilter] = useState([]);
+
+  // Discussions data
+  const [discussions, setDiscussions] = useState([]);
+  const [newDiscussion, setNewDiscussion] = useState({ title: '', content: '' });
+  const [submitting, setSubmitting] = useState(false);
+  const [replyingTo, setReplyingTo] = useState(null);
+  const [replyContent, setReplyContent] = useState('');
 
   // ========== Initial auth check ==========
   useEffect(() => {
@@ -414,6 +421,105 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
     } catch (error) {
       console.error('Error fetching schedule:', error);
       setMockScheduleData();
+    }
+  };
+
+  const goToDiscussions = () => {
+  setActiveView('discussions');
+  fetchDiscussions();
+  };
+
+  // Discussions functions
+  const fetchDiscussions = async () => {
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch(`${API_BASE_URL}/discussions`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) setDiscussions(data.data);
+    } catch (error) {
+      console.error('Error fetching discussions:', error);
+    }
+  };
+
+  const handleCreateDiscussion = async (e) => {
+    e.preventDefault();
+    // Validation
+    if (!newDiscussion.title.trim()) {
+      alert('Please enter a title');
+      return;
+    }
+    if (!newDiscussion.content.trim()) {
+      alert('Please enter content');
+      return;
+    }
+    setSubmitting(true);
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch(`${API_BASE_URL}/discussions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(newDiscussion)
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDiscussions(prev => [data.data, ...prev]);
+        setNewDiscussion({ title: '', content: '' });
+      }
+    } catch (error) {
+      console.error('Error creating discussion:', error);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleReply = async (discussionId) => {
+    if (!replyContent.trim()) {
+      alert('Please enter a reply');
+      return;
+    }
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch(`${API_BASE_URL}/discussions/${discussionId}/reply`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ content: replyContent })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDiscussions(prev => prev.map(d =>
+          d._id === discussionId ? data.data : d
+        ));
+        setReplyingTo(null);
+        setReplyContent('');
+      }
+    } catch (error) {
+      console.error('Error posting reply:', error);
+    }
+  };
+
+  const handleLike = async (discussionId) => {
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch(`${API_BASE_URL}/discussions/${discussionId}/like`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDiscussions(prev => prev.map(d =>
+          d._id === discussionId ? data.data : d
+        ));
+      }
+    } catch (error) {
+      console.error('Error liking discussion:', error);
     }
   };
 
@@ -1498,6 +1604,122 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
       </motion.div>
     );
   };
+
+  // Discussions view
+  const renderDiscussions = () => (
+    <div className="max-w-7xl mx-auto space-y-8">
+      <div className="flex items-center gap-4">
+        <button onClick={goToDashboard} className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
+          <ChevronLeft className="h-5 w-5 text-slate-600" />
+        </button>
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">Discussion Forum</h1>
+          <p className="text-slate-500 mt-1">Ask questions, share knowledge, and connect with fellow tutors and students.</p>
+        </div>
+      </div>
+
+      {/* Create Discussion Form */}
+      <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
+        <h2 className="text-lg font-bold text-slate-900 mb-4">Start a Discussion</h2>
+        <form onSubmit={handleCreateDiscussion} className="space-y-4">
+          <input
+            type="text"
+            placeholder="Discussion title"
+            value={newDiscussion.title}
+            onChange={(e) => setNewDiscussion({ ...newDiscussion, title: e.target.value })}
+            className="w-full px-4 py-3 bg-slate-50 border-2 border-transparent focus:border-indigo-500 rounded-xl focus:outline-none transition-all"
+          />
+          <textarea
+            rows={4}
+            placeholder="What would you like to discuss?"
+            value={newDiscussion.content}
+            onChange={(e) => setNewDiscussion({ ...newDiscussion, content: e.target.value })}
+            className="w-full px-4 py-3 bg-slate-50 border-2 border-transparent focus:border-indigo-500 rounded-xl focus:outline-none transition-all resize-none"
+          />
+          <button
+            type="submit"
+            disabled={submitting}
+            className="inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all disabled:opacity-70"
+          >
+            {submitting ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <Send className="h-5 w-5" />}
+            {submitting ? 'Posting...' : 'Post Discussion'}
+          </button>
+        </form>
+      </div>
+
+      {/* Discussions List */}
+      <div className="space-y-4">
+        {discussions.length === 0 ? (
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-12 text-center">
+            <MessageSquare className="h-16 w-16 text-slate-300 mx-auto mb-4" />
+            <p className="text-slate-500">No discussions yet. Be the first to start one!</p>
+          </div>
+        ) : (
+          discussions.map((discussion) => (
+            <div key={discussion._id} className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 hover:shadow-md transition-all">
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <h3 className="text-xl font-bold text-slate-900 mb-2">{discussion.title}</h3>
+                  <p className="text-slate-600 mb-4">{discussion.content}</p>
+                  <div className="flex items-center gap-4 text-sm text-slate-500">
+                    <span className="flex items-center gap-1"><User className="h-4 w-4" /> {discussion.author?.name || 'Unknown'}</span>
+                    <span className="flex items-center gap-1"><Clock className="h-4 w-4" /> {new Date(discussion.createdAt).toLocaleDateString()}</span>
+                    <button
+                      onClick={() => handleLike(discussion._id)}
+                      className="flex items-center gap-1 hover:text-indigo-600 transition-colors"
+                    >
+                      <ThumbsUp className="h-4 w-4" /> {discussion.likes?.length || 0}
+                    </button>
+                    <button
+                      onClick={() => setReplyingTo(replyingTo === discussion._id ? null : discussion._id)}
+                      className="flex items-center gap-1 hover:text-indigo-600 transition-colors"
+                    >
+                      <MessageSquare className="h-4 w-4" /> {discussion.replies?.length || 0} replies
+                    </button>
+                  </div>
+
+                  {/* Replies Section */}
+                  {discussion.replies && discussion.replies.length > 0 && (
+                    <div className="mt-4 pl-6 border-l-2 border-slate-100 space-y-3">
+                      {discussion.replies.map((reply, idx) => (
+                        <div key={idx} className="text-sm">
+                          <span className="font-semibold">{reply.author?.name || 'User'}</span>
+                          <p className="text-slate-600 mt-1">{reply.content}</p>
+                          <span className="text-[10px] text-slate-400">
+                            {new Date(reply.createdAt).toLocaleString()}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Reply Form */}
+                  {replyingTo === discussion._id && (
+                    <div className="mt-4 flex gap-2">
+                      <input
+                        type="text"
+                        value={replyContent}
+                        onChange={(e) => setReplyContent(e.target.value)}
+                        placeholder="Write your reply..."
+                        className="flex-1 px-4 py-2 bg-slate-50 rounded-xl focus:border-indigo-500 focus:outline-none"
+                      />
+                      <button
+                        onClick={() => handleReply(discussion._id)}
+                        className="px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700"
+                      >
+                        Reply
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+
   // Course Detail view (formerly TutorCourseDetail)
   const renderCourseDetail = () => {
     if (!courseDetail) {
@@ -2040,6 +2262,7 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
     { name: 'Create Course', icon: Plus, view: 'create-course', isActive: activeView === 'create-course' },
     { name: 'Messages', icon: MessageSquare, view: 'messages', isActive: activeView === 'messages', badge: unreadMessages },
     { name: 'Resources', icon: FileText, view: 'resources', isActive: false },
+    { name: 'Discussions', icon: MessageSquare, view: 'discussions', isActive: activeView === 'discussions' },
   ];
 
   return (
@@ -2072,6 +2295,7 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
                   else if (link.view === 'create-course') goToCreateCourse();
                   else if (link.view === 'messages') goToMessages();
                   else if (link.view === 'resources') goToResources();
+                  else if (link.view === 'discussions') goToDiscussions();
                 }}
                 className={`flex items-center justify-between w-full px-4 py-3 rounded-xl transition-all text-left ${
                   link.isActive ? 'bg-indigo-600/10 text-indigo-600 font-medium' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
@@ -2141,6 +2365,7 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
             {activeView === 'lessonCreate' && <div key="lessonCreate">{renderLessonCreate()}</div>}
             {activeView === 'resourceUpload' && <div key="resourceUpload">{renderResourceUpload()}</div>}
             {activeView === 'resources' && <div key="resources">{renderResources()}</div>}
+            {activeView === 'discussions' && <div key="discussions">{renderDiscussions()}</div>}
           </AnimatePresence>
         </main>
 

@@ -50,6 +50,7 @@ const lessonRoutes = require('./routes/lessonRoutes');
 const resourceRoutes = require('./routes/resourceRoutes');
 const enrollmentRoutes = require('./routes/enrollmentRoutes');
 const messageRoutes = require('./routes/messageRoutes');
+const discussionRoutes = require('./routes/discussionRoutes');
 
 // Mount routes
 app.use('/api/courses', courseRoutes);
@@ -59,6 +60,7 @@ app.use('/api/enrollments', enrollmentRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/discussions', discussionRoutes);
 
 // Base route
 app.get('/', (req, res) => {

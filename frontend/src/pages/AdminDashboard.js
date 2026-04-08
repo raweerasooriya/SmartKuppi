@@ -13,7 +13,7 @@ import {
   Search, Plus, Filter, MoreVertical, ArrowUpRight,
   UserCheck, UserX, GraduationCap, ChevronLeft, Video, ExternalLink, Save,
   Edit3, Trash2, UserPlus, MessageSquare, Star, AlertCircle, FolderOpen,
-  Eye, EyeOff, Key, Upload, User, Download, Globe, Edit2, Send
+  Eye, EyeOff, Key, Upload, User, Download, Globe, Edit2, Send, ThumbsUp
 } from 'lucide-react';
 
 import MessageThread from '../components/MessageThread';
@@ -2257,6 +2257,13 @@ const AdminDashboard = () => {
   const [filterTutor, setFilterTutor] = useState('all');
   const [filterCourse, setFilterCourse] = useState('all');
 
+  // Discussions state
+  const [discussions, setDiscussions] = useState([]);
+  const [newDiscussion, setNewDiscussion] = useState({ title: '', content: '' });
+  const [submitting, setSubmitting] = useState(false);
+  const [replyingTo, setReplyingTo] = useState(null);
+  const [replyContent, setReplyContent] = useState('');
+
   const navigate = useNavigate();
 
   // Data fetching functions (unchanged)
@@ -2339,6 +2346,110 @@ const AdminDashboard = () => {
     setScheduleLoading(false);
   };
 
+  // Discussions API functions
+  const fetchDiscussions = async () => {
+    const token = getToken();
+    try {
+      const res = await fetch(`${API_BASE_URL}/discussions`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) setDiscussions(data.data);
+    } catch (error) {
+      console.error('Error fetching discussions:', error);
+    }
+  };
+
+  const handleCreateDiscussion = async (e) => {
+    e.preventDefault();
+    if (!newDiscussion.title.trim() || !newDiscussion.content.trim()) {
+      alert('Please enter title and content');
+      return;
+    }
+    setSubmitting(true);
+    const token = getToken();
+    try {
+      const res = await fetch(`${API_BASE_URL}/discussions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(newDiscussion)
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDiscussions(prev => [data.data, ...prev]);
+        setNewDiscussion({ title: '', content: '' });
+      }
+    } catch (error) {
+      console.error('Error creating discussion:', error);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleReply = async (discussionId) => {
+    if (!replyContent.trim()) {
+      alert('Please enter a reply');
+      return;
+    }
+    const token = getToken();
+    try {
+      const res = await fetch(`${API_BASE_URL}/discussions/${discussionId}/reply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ content: replyContent })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDiscussions(prev => prev.map(d => d._id === discussionId ? data.data : d));
+        setReplyingTo(null);
+        setReplyContent('');
+      }
+    } catch (error) {
+      console.error('Error posting reply:', error);
+    }
+  };
+
+  const handleLike = async (discussionId) => {
+    const token = getToken();
+    try {
+      const res = await fetch(`${API_BASE_URL}/discussions/${discussionId}/like`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDiscussions(prev => prev.map(d => d._id === discussionId ? data.data : d));
+      }
+    } catch (error) {
+      console.error('Error liking discussion:', error);
+    }
+  };
+
+  const handleDeleteDiscussion = async (discussionId) => {
+    if (!window.confirm('Are you sure you want to permanently delete this discussion? This action cannot be undone.')) return;
+    const token = getToken();
+    try {
+      const res = await fetch(`${API_BASE_URL}/discussions/${discussionId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDiscussions(prev => prev.filter(d => d._id !== discussionId));
+      } else {
+        alert(data.message || 'Failed to delete discussion');
+      }
+    } catch (error) {
+      console.error('Error deleting discussion:', error);
+      alert('Network error');
+    }
+  };
+
+  const goToDiscussions = () => {
+  setActiveView('discussions');
+  fetchDiscussions();
+  };
+
   const handleLogout = () => { localStorage.removeItem('user'); localStorage.removeItem('token'); navigate('/login'); };
   const getInitials = (name) => name?.split(' ').map(n=>n[0]).join('').toUpperCase().slice(0,2) || 'AD';
   const getStatusBadge = (status) => {
@@ -2393,6 +2504,121 @@ const AdminDashboard = () => {
     </motion.div>
   );
 
+  // Discussions view
+  const renderDiscussions = () => (
+    <div className="max-w-7xl mx-auto space-y-8">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <button onClick={() => setActiveView('dashboard')} className="p-2 hover:bg-white border rounded-xl">
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+          <div>
+            <h1 className="text-2xl font-bold">Discussion Forum</h1>
+            <p className="text-slate-500">Ask questions, share knowledge, and connect.</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Create Discussion Form */}
+      <div className="bg-white rounded-3xl border shadow-sm p-6">
+        <h2 className="text-lg font-bold mb-4">Start a Discussion</h2>
+        <form onSubmit={handleCreateDiscussion} className="space-y-4">
+          <input
+            type="text"
+            placeholder="Discussion title"
+            value={newDiscussion.title}
+            onChange={(e) => setNewDiscussion({ ...newDiscussion, title: e.target.value })}
+            className="w-full px-4 py-3 bg-slate-50 rounded-xl focus:border-indigo-500 focus:outline-none"
+          />
+          <textarea
+            rows={4}
+            placeholder="What would you like to discuss?"
+            value={newDiscussion.content}
+            onChange={(e) => setNewDiscussion({ ...newDiscussion, content: e.target.value })}
+            className="w-full px-4 py-3 bg-slate-50 rounded-xl resize-none focus:border-indigo-500 focus:outline-none"
+          />
+          <button
+            type="submit"
+            disabled={submitting}
+            className="inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 disabled:opacity-70"
+          >
+            {submitting ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <Send className="h-5 w-5" />}
+            {submitting ? 'Posting...' : 'Post Discussion'}
+          </button>
+        </form>
+      </div>
+
+      {/* Discussions List */}
+      <div className="space-y-4">
+        {discussions.length === 0 ? (
+          <div className="bg-white rounded-3xl border p-12 text-center text-slate-500">
+            No discussions yet. Be the first to start one!
+          </div>
+        ) : (
+          discussions.map((discussion) => (
+            <div key={discussion._id} className="bg-white rounded-3xl border shadow-sm p-6 hover:shadow-md transition-all">
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <h3 className="text-xl font-bold text-slate-900 mb-2">{discussion.title}</h3>
+                  <p className="text-slate-600 mb-4">{discussion.content}</p>
+                  <div className="flex items-center gap-4 text-sm text-slate-500">
+                    <span className="flex items-center gap-1"><User className="h-4 w-4" /> {discussion.author?.name || 'Unknown'}</span>
+                    <span className="flex items-center gap-1"><Clock className="h-4 w-4" /> {new Date(discussion.createdAt).toLocaleDateString()}</span>
+                    <button onClick={() => handleLike(discussion._id)} className="flex items-center gap-1 hover:text-indigo-600">
+                      <ThumbsUp className="h-4 w-4" /> {discussion.likes?.length || 0}
+                    </button>
+                    <button onClick={() => setReplyingTo(replyingTo === discussion._id ? null : discussion._id)} className="flex items-center gap-1 hover:text-indigo-600">
+                      <MessageSquare className="h-4 w-4" /> {discussion.replies?.length || 0} replies
+                    </button>
+                    {admin?.role === 'admin' && (
+                      <button onClick={() => handleDeleteDiscussion(discussion._id)} className="flex items-center gap-1 text-rose-500 hover:text-rose-700">
+                        <Trash2 className="h-4 w-4" /> Delete
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Replies Section */}
+                  {discussion.replies && discussion.replies.length > 0 && (
+                    <div className="mt-4 pl-6 border-l-2 border-slate-100 space-y-3">
+                      {discussion.replies.map((reply, idx) => (
+                        <div key={idx} className="text-sm">
+                          <span className="font-semibold">{reply.author?.name || 'User'}</span>
+                          <p className="text-slate-600 mt-1">{reply.content}</p>
+                          <span className="text-[10px] text-slate-400">
+                            {new Date(reply.createdAt).toLocaleString()}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Reply Form */}
+                  {replyingTo === discussion._id && (
+                    <div className="mt-4 flex gap-2">
+                      <input
+                        type="text"
+                        value={replyContent}
+                        onChange={(e) => setReplyContent(e.target.value)}
+                        placeholder="Write your reply..."
+                        className="flex-1 px-4 py-2 bg-slate-50 rounded-xl focus:border-indigo-500 focus:outline-none"
+                      />
+                      <button
+                        onClick={() => handleReply(discussion._id)}
+                        className="px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700"
+                      >
+                        Reply
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+
   // Main render
   if (loading) return (<div className="min-h-screen bg-slate-50 flex items-center justify-center"><div className="w-16 h-16 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div></div>);
 
@@ -2417,11 +2643,20 @@ const AdminDashboard = () => {
               { name: 'Courses', view: 'courses', icon: BookOpen },
               { name: 'Schedule', view: 'schedule', icon: CalendarIcon },
               { name: 'Resources', view: 'resources', icon: FileText },
-              { name: 'Messages', view: 'messages', icon: MessageSquare }
+              { name: 'Messages', view: 'messages', icon: MessageSquare },
+              { name: 'Discussions', view: 'discussions', icon: MessageSquare }
             ].map(link => {
               const isActive = activeView === link.view;
               const Icon = link.icon;
-              return (<button key={link.name} onClick={() => setActiveView(link.view)} className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl transition-all duration-200 ${isActive ? 'bg-indigo-600/10 text-indigo-400 font-medium' : 'hover:bg-slate-800 hover:text-white'}`}><Icon className={`h-5 w-5 ${isActive ? 'text-indigo-400' : 'text-slate-500'}`} /><span>{link.name}</span></button>);
+              return (<button key={link.name} 
+                onClick={() => {
+                  if (link.view === 'discussions') {
+                    goToDiscussions();
+                  } else {
+                    setActiveView(link.view);
+                  }
+                }}
+                className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl transition-all duration-200 ${isActive ? 'bg-indigo-600/10 text-indigo-400 font-medium' : 'hover:bg-slate-800 hover:text-white'}`}><Icon className={`h-5 w-5 ${isActive ? 'text-indigo-400' : 'text-slate-500'}`} /><span>{link.name}</span></button>);
             })}
           </nav>
           <div className="p-4 border-t border-slate-800"><div className="bg-slate-800/50 rounded-2xl p-4"><div className="flex items-center space-x-3 mb-3"><div className="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold">{admin ? getInitials(admin.name) : 'A'}</div><div><p className="text-sm font-medium text-white truncate">{admin?.name || 'Admin'}</p><p className="text-xs text-slate-500 truncate">Super Administrator</p></div></div><button onClick={handleLogout} className="w-full flex items-center justify-center space-x-2 py-2 text-xs font-semibold text-slate-400 hover:text-rose-400 hover:bg-rose-400/10 rounded-lg"><LogOut className="h-4 w-4" /><span>Sign Out</span></button></div></div>
@@ -2475,6 +2710,8 @@ const AdminDashboard = () => {
             {activeView === 'messages' && <AdminMessages onBack={() => setActiveView('dashboard')} key="messages" />}
             {activeView === 'resources' && <ResourceManagement onBack={() => setActiveView('dashboard')} key="resources" />}
             {activeView === 'users' && <UserManagement onBack={() => setActiveView('dashboard')} key="users" />}
+            {activeView === 'discussions' && <div key="discussions">{renderDiscussions()}</div>}
+
           </AnimatePresence>
         </main>
         <footer className="bg-white border-t border-slate-100 py-6 px-8"><div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4"><div className="flex items-center space-x-2"><BookOpen className="h-5 w-5 text-indigo-500" /><span className="font-bold text-slate-900">Smart<span className="text-indigo-500">Kuppi</span></span><span className="text-xs text-slate-400">© 2024 Admin Portal</span></div><div className="flex items-center space-x-6 text-xs font-bold text-slate-400 uppercase"><button className="hover:text-indigo-500">Docs</button><button className="hover:text-indigo-500">Support</button><button className="hover:text-indigo-500">Privacy</button></div></div></footer>
