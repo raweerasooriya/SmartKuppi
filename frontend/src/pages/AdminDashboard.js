@@ -456,7 +456,14 @@ const AdminMessages = ({ onBack }) => {
           </div>
         </div>
         <div className="lg:col-span-2 bg-white rounded-3xl border shadow-sm flex flex-col overflow-hidden">
-          {selectedConversation ? (<><div className="p-4 border-b bg-slate-50 flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center font-bold">{selectedConversation.otherUser.name?.split(' ').map(n=>n[0]).join('').toUpperCase().slice(0,2)}</div><div><p className="font-bold">{selectedConversation.otherUser.name}</p><p className="text-xs text-slate-500">Tutor</p></div></div><div className="flex-1 overflow-y-auto p-4"><MessageThread conversation={selectedConversation} onMessageSent={fetchConversations} /></div><div className="p-4 border-t flex gap-2"><input type="text" value={newMessage} onChange={e => setNewMessage(e.target.value)} placeholder="Type your message..." className="flex-1 px-4 py-2 bg-slate-50 rounded-xl focus:outline-none" onKeyPress={e => e.key === 'Enter' && handleSendMessage()} /><button onClick={handleSendMessage} disabled={sending || !newMessage.trim()} className="px-4 py-2 bg-indigo-600 text-white rounded-xl disabled:opacity-50"><Send className="h-4 w-4" /></button></div></>) : (<div className="flex-1 flex flex-col items-center justify-center text-slate-400"><MessageSquare size={48} className="mb-4 opacity-20" /><p>Select a conversation or start a new chat</p></div>)}
+          {selectedConversation ? (
+            <MessageThread conversation={selectedConversation} onMessageSent={fetchConversations} />
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
+              <MessageSquare size={48} className="mb-4 opacity-20" />
+              <p>Select a conversation or start a new chat</p>
+            </div>
+          )}
         </div>
       </div>
       {/* New Chat Modal */}

@@ -2,8 +2,9 @@
 const Message = require('../models/Message');
 const Course = require('../models/Course');
 const Enrollment = require('../models/Enrollment');
+const User = require('../models/User');
 
-// @desc    Send a message (student to tutor or tutor to student)
+// @desc    Send a message (student to tutor, tutor to student, or any to admin)
 // @route   POST /api/messages
 // @access  Private (any logged-in user)
 exports.sendMessage = async (req, res) => {
@@ -11,7 +12,7 @@ exports.sendMessage = async (req, res) => {
     const { receiver, course, content } = req.body;
     const sender = req.user.id;
 
-    // Validate: sender and receiver must be related to the course (if course provided)
+    // If course is provided, validate it
     if (course) {
       const courseDoc = await Course.findById(course);
       if (!courseDoc) return res.status(404).json({ success: false, message: 'Course not found' });
@@ -29,18 +30,23 @@ exports.sendMessage = async (req, res) => {
         return res.status(403).json({ success: false, message: 'Not authorized' });
       }
     } else {
-      // Without course, allow only if it's an admin or maybe global messaging? We'll restrict to course-specific.
-      return res.status(400).json({ success: false, message: 'Course is required for messaging' });
+      // No course provided – only allow if receiver is admin OR sender is admin
+      const receiverUser = await User.findById(receiver);
+      if (!receiverUser) return res.status(404).json({ success: false, message: 'Receiver not found' });
+      
+      // Allow: admin sending to anyone, OR anyone sending to admin
+      if (req.user.role !== 'admin' && receiverUser.role !== 'admin') {
+        return res.status(400).json({ success: false, message: 'Course is required for non-admin messaging' });
+      }
     }
 
     const newMessage = await Message.create({
       sender,
       receiver,
-      course,
+      course: course || null,
       content
     });
 
-    // FIX: Populate before sending response so frontend doesn't get "ID only"
     const populatedMessage = await Message.findById(newMessage._id)
       .populate('sender', 'name email')
       .populate('receiver', 'name email')
@@ -103,28 +109,39 @@ exports.markRead = async (req, res) => {
   }
 };
 
-// @desc    Get conversation between two users for a specific course
-// @route   GET /api/messages?course=:courseId&user=:userId
+// @desc    Get conversation between two users (optionally for a specific course)
+// @route   GET /api/messages?user=:userId&course=:courseId (course optional)
 // @access  Private
 exports.getConversation = async (req, res) => {
   try {
     const { course, user } = req.query;
     const currentUser = req.user.id;
-    
-    if (!course || !user) {
-      return res.status(400).json({ success: false, message: 'Course and user parameters are required' });
+
+    if (!user) {
+      return res.status(400).json({ success: false, message: 'User parameter is required' });
     }
-    
-    const messages = await Message.find({
-      course: course,
+
+    let query = {
       $or: [
         { sender: currentUser, receiver: user },
         { sender: user, receiver: currentUser }
       ]
-    }).sort('createdAt')
+    };
+
+    // Only filter by course if it's provided and not 'general'
+    if (course && course !== 'general') {
+      query.course = course;
+    } else if (course === 'general') {
+      // For 'general', match messages where course is null or missing
+      query.$and = [{ $or: [{ course: null }, { course: '' }, { course: { $exists: false } }] }];
+    }
+    // If no course parameter, don't filter by course at all
+
+    const messages = await Message.find(query)
+      .sort('createdAt')
       .populate('sender', 'name email')
       .populate('receiver', 'name email');
-    
+
     res.json({ success: true, data: messages });
   } catch (error) {
     console.error('Error fetching conversation:', error);

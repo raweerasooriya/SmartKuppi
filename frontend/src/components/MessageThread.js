@@ -14,11 +14,17 @@ const MessageThread = ({ conversation, onMessageSent }) => {
   // FIX: Fetch the specific thread from backend to stay in the same box
   const loadThread = async () => {
     const token = localStorage.getItem('token');
-    const courseId = conversation.course?._id || conversation.course;
+    let courseId = conversation.course?._id || conversation.course;
     const userId = conversation.otherUser?._id;
 
+    // Build URL: course parameter only if it exists and is not 'general'
+    let url = `${API_BASE_URL}/messages?user=${userId}`;
+    if (courseId && courseId !== 'general') {
+      url += `&course=${courseId}`;
+    }
+
     try {
-      const res = await fetch(`${API_BASE_URL}/messages?course=${courseId}&user=${userId}`, {
+      const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();

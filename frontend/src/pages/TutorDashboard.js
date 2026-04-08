@@ -290,7 +290,8 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
       const grouped = {};
       allMessages.forEach(msg => {
         const otherUser = msg.sender._id === currentUser.id ? msg.receiver : msg.sender;
-        const courseId = msg.course?._id || msg.course || 'general';
+        let courseId = msg.course?._id || msg.course;
+        if (!courseId) courseId = 'general';
         const key = `${otherUser._id}-${courseId}`;
         if (!grouped[key]) {
           grouped[key] = {
