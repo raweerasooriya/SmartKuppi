@@ -4,6 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { format, isSameDay, parseISO, startOfWeek, endOfWeek } from 'date-fns';
 import {
   Menu, X, ChevronDown, LogOut, Settings,
@@ -1791,6 +1793,130 @@ const UserManagement = ({ onBack }) => {
     }
   };
 
+  // ... inside UserManagement component
+  const exportToPDF = async () => {
+    const dataToExport = filteredUsers;
+    if (dataToExport.length === 0) {
+      alert('No users to export');
+      return;
+    }
+
+    // Import jsPDF and autoTable
+    const { default: jsPDF } = await import('jspdf');
+    const { default: autoTable } = await import('jspdf-autotable');
+
+    const doc = new jsPDF('landscape');
+
+    // Header: SmartKuppi
+    doc.setFontSize(24);
+    doc.setTextColor(79, 70, 229); // Indigo color
+    doc.setFont('helvetica', 'bold');
+    doc.text('SmartKuppi', 14, 20);
+
+    // Title
+    doc.setFontSize(16);
+    doc.setTextColor(30, 41, 59);
+    doc.setFont('helvetica', 'normal');
+    doc.text('User Management Report', 14, 35);
+
+    // Generation date/time (right aligned)
+    const now = new Date();
+    const dateStr = now.toLocaleString();
+    doc.setFontSize(9);
+    doc.setTextColor(100, 116, 139);
+    doc.text(`Generated: ${dateStr}`, doc.internal.pageSize.width - 14, 20, { align: 'right' });
+
+    // Filters info
+    let filterText = `Filters: Role: ${roleFilter === 'all' ? 'All' : roleFilter} | Status: ${statusFilter === 'all' ? 'All' : statusFilter}`;
+    if (searchTerm) filterText += ` | Search: "${searchTerm}"`;
+    doc.setFontSize(9);
+    doc.text(filterText, 14, 45);
+
+    // Prepare table data
+    const tableHeaders = [['Name', 'Email', 'Role', 'Status', 'Phone', 'Joined Date']];
+    const tableRows = dataToExport.map(user => [
+      user.name,
+      user.email,
+      user.role,
+      user.status,
+      user.phone || 'N/A',
+      new Date(user.createdAt).toLocaleDateString()
+    ]);
+
+    // Add table
+    autoTable(doc, {
+      head: tableHeaders,
+      body: tableRows,
+      startY: 55,
+      theme: 'striped',
+      headStyles: {
+        fillColor: [79, 70, 229],
+        textColor: 255,
+        fontSize: 10,
+        fontStyle: 'bold',
+        halign: 'center'
+      },
+      bodyStyles: {
+        fontSize: 9,
+        cellPadding: 3
+      },
+      alternateRowStyles: {
+        fillColor: [248, 250, 252]
+      },
+      margin: { left: 14, right: 14 },
+      columnStyles: {
+        0: { cellWidth: 'auto' },
+        1: { cellWidth: 'auto' },
+        2: { cellWidth: 25 },
+        3: { cellWidth: 25 },
+        4: { cellWidth: 30 },
+        5: { cellWidth: 30 }
+      }
+    });
+
+    // Add page numbers
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setTextColor(150, 150, 150);
+      doc.text(
+        `Page ${i} of ${pageCount}`,
+        doc.internal.pageSize.width / 2,
+        doc.internal.pageSize.height - 10,
+        { align: 'center' }
+      );
+    }
+
+    // Save PDF
+    doc.save(`users_${now.toISOString().slice(0,19)}.pdf`);
+  };
+
+  const exportToCSV = () => {
+    const dataToExport = filteredUsers;
+    if (dataToExport.length === 0) {
+      alert('No users to export');
+      return;
+    }
+    const headers = ['Name', 'Email', 'Role', 'Status', 'Phone', 'Joined Date'];
+    const rows = dataToExport.map(user => [
+      user.name,
+      user.email,
+      user.role,
+      user.status,
+      user.phone || 'N/A',
+      new Date(user.createdAt).toLocaleDateString()
+    ]);
+    const csvContent = [headers, ...rows].map(row => row.join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `users_${new Date().toISOString().slice(0,19)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const getRoleIcon = (role) => {
     switch (role) {
       case 'admin': return <Shield className="h-4 w-4 text-rose-500" />;
@@ -1812,7 +1938,14 @@ const UserManagement = ({ onBack }) => {
     }
   };
 
-  const filteredUsers = users;
+  const filteredUsers = users.filter(user => {
+  const matchesSearch = searchTerm === '' || 
+      user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.email?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesRole = roleFilter === 'all' || user.role === roleFilter;
+    const matchesStatus = statusFilter === 'all' || user.status === statusFilter;
+    return matchesSearch && matchesRole && matchesStatus;
+  });
 
   return (
     <>
@@ -1836,14 +1969,23 @@ const UserManagement = ({ onBack }) => {
             </div>
           </div>
           <div className="flex items-center space-x-3">
-            <button className="flex items-center space-x-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors shadow-sm">
-              <Download className="h-4 w-4" /><span>Export CSV</span>
+            <button 
+              onClick={exportToPDF}
+              className="flex items-center space-x-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors shadow-sm"
+            >
+              <Download className="h-4 w-4" /><span>Export PDF</span>
             </button>
             <button 
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20"
+              onClick={exportToCSV}
+              className="flex items-center space-x-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors shadow-sm"
             >
-            <Plus className="h-4 w-4" /><span>Add New User</span>
+              <FileText className="h-4 w-4" /><span>Export CSV</span>
+            </button>
+            <button 
+              onClick={() => setShowAddModal(true)}
+              className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20"
+            >
+              <Plus className="h-4 w-4" /><span>Add New User</span>
             </button>
           </div>
         </div>
