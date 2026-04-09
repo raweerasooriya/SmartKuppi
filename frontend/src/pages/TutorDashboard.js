@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import CourseCardHeader from '../components/CourseCardHeader';
 import MessageThread from '../components/MessageThread';
+import AnnouncementManager from '../components/AnnouncementManager';
 
 const API_BASE_URL = 'http://localhost:5000/api';
 const getToken = () => localStorage.getItem('token');
@@ -47,6 +48,8 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
   const [upcomingLessons, setUpcomingLessons] = useState([]);
   const [unreadMessages, setUnreadMessages] = useState(0);
   
+  const [announcements, setAnnouncements] = useState([]);
+  const [announcementsLoading, setAnnouncementsLoading] = useState(false);
   // Course list (for My Courses view)
   const [courses, setCourses] = useState([]);
   
@@ -254,6 +257,49 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
       ]);
       setLoading(false);
     }
+  };
+
+  const fetchAnnouncements = useCallback(async () => {
+  const token = getToken();
+  setAnnouncementsLoading(true);
+  try {
+      const res = await fetch(`${API_BASE_URL}/announcements?scope=mine`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) setAnnouncements(data.data);
+    } catch (error) { console.error(error); }
+    finally { setAnnouncementsLoading(false); }
+  }, []);
+
+  const handleCreateAnnouncement = async (announcementData) => {
+    const res = await fetch(`${API_BASE_URL}/announcements`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+      body: JSON.stringify(announcementData)
+    });
+    return await res.json();
+  };
+
+  const handleUpdateAnnouncement = async (id, announcementData) => {
+    const res = await fetch(`${API_BASE_URL}/announcements/${id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${getToken()}`
+      },
+      body: JSON.stringify(announcementData)
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.message || 'Failed to update');
+    return data.data;
+  };
+  const handleDeleteAnnouncement = async (id) => {
+    await fetch(`${API_BASE_URL}/announcements/${id}`, { 
+      method: 'DELETE', 
+      headers: { Authorization: `Bearer ${getToken()}` } 
+    });
+    fetchAnnouncements();
   };
 
   const fetchCourseDetail = async (courseId) => {
@@ -703,6 +749,11 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
   const goToMessages = () => {
     setActiveView('messages');
     fetchMessages();
+  };
+  // Fixes ESLint error in TutorDashboard
+  const goToAnnouncements = () => {
+    setActiveView('announcements');
+    fetchAnnouncements(); // Triggers the backend call to get your announcements
   };
   const goToCourseDetail = (courseId) => {
     setSelectedCourseId(courseId);
@@ -2688,6 +2739,7 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
     { name: 'Schedule', icon: CalendarIcon, view: 'schedule', isActive: activeView === 'schedule' },
     { name: 'Create Course', icon: Plus, view: 'create-course', isActive: activeView === 'create-course' },
     { name: 'Messages', icon: MessageSquare, view: 'messages', isActive: activeView === 'messages', badge: unreadMessages },
+    { name: 'Announcements', icon: Bell, view: 'announcements', isActive: activeView === 'announcements' },
     { name: 'Resources', icon: FileText, view: 'resources', isActive: false },
     { name: 'Discussions', icon: MessageSquare, view: 'discussions', isActive: activeView === 'discussions' },
   ];
@@ -2723,6 +2775,7 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
                   else if (link.view === 'messages') goToMessages();
                   else if (link.view === 'resources') goToResources();
                   else if (link.view === 'discussions') goToDiscussions();
+                  else if (link.view === 'announcements') goToAnnouncements();
                 }}
                 className={`flex items-center justify-between w-full px-4 py-3 rounded-xl transition-all text-left ${
                   link.isActive ? 'bg-indigo-600/10 text-indigo-600 font-medium' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
@@ -2788,6 +2841,26 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
             {activeView === 'create-course' && <div key="create-course">{renderCreateCourse()}</div>}
             {activeView === 'schedule' && <div key="schedule">{renderSchedule()}</div>}
             {activeView === 'messages' && <div key="messages">{renderMessages()}</div>}
+            {activeView === 'announcements' && (
+            <div key="announcements">
+              <AnnouncementManager 
+                pageTitle="Module Announcements"
+                pageDescription="Post updates to students enrolled in your courses."
+                announcements={announcements}
+                loading={announcementsLoading}
+                allowCreate={true}
+                allowCommon={false} 
+                courseOptions={courses}
+                currentUserId={tutor?.id || tutor?._id}
+                currentUserRole={tutor?.role} // ADDED THIS
+                onBack={goToDashboard}
+                onRefresh={fetchAnnouncements}
+                onCreateAnnouncement={handleCreateAnnouncement}
+                onUpdateAnnouncement={handleUpdateAnnouncement} // ADDED THIS
+                onDeleteAnnouncement={handleDeleteAnnouncement}
+              />
+            </div>
+          )}
             {activeView === 'courseDetail' && <div key="courseDetail">{renderCourseDetail()}</div>}
             {activeView === 'lessonCreate' && <div key="lessonCreate">{renderLessonCreate()}</div>}
             {activeView === 'resourceUpload' && <div key="resourceUpload">{renderResourceUpload()}</div>}

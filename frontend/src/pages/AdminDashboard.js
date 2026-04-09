@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 
 import MessageThread from '../components/MessageThread';
+import AnnouncementManager from '../components/AnnouncementManager';
 
 const API_BASE_URL = 'http://localhost:5000/api';
 
@@ -2713,6 +2714,11 @@ const AdminDashboard = () => {
   const [filterTutor, setFilterTutor] = useState('all');
   const [filterCourse, setFilterCourse] = useState('all');
 
+  // INSERT THESE THREE BELOW:
+  const [announcements, setAnnouncements] = useState([]);
+  const [announcementsLoading, setAnnouncementsLoading] = useState(false);
+  const [announcementCourses, setAnnouncementCourses] = useState([]);
+
   // Discussions state
   const [discussions, setDiscussions] = useState([]);
   const [newDiscussion, setNewDiscussion] = useState({ title: '', content: '' });
@@ -2744,6 +2750,34 @@ const AdminDashboard = () => {
     setLoading(false);
   }, []);
 
+  // Paste these after fetchDashboardData
+  const fetchAnnouncements = useCallback(async () => {
+    setAnnouncementsLoading(true);
+    try {
+    const res = await fetch(`${API_BASE_URL}/announcements`, {
+      headers: { Authorization: `Bearer ${getToken()}` }
+      });
+      const data = await res.json();
+      if (data.success) setAnnouncements(data.data);
+    } catch (error) {
+      console.error('Error fetching announcements:', error);
+    } finally {
+      setAnnouncementsLoading(false);
+    }
+  }, []);
+
+const fetchAnnouncementCourses = useCallback(async () => {
+  try {
+      const res = await fetch(`${API_BASE_URL}/admin/courses`, {
+        headers: { Authorization: `Bearer ${getToken()}` }
+      });
+      const data = await res.json();
+      if (data.success) setAnnouncementCourses(data.data);
+    } catch (error) {
+      console.error('Error fetching courses for announcements:', error);
+    }
+  }, []);
+
   const filterLessonsByDate = (lessonsData = allLessons, date = selectedDate) => {
     let filtered = lessonsData.filter(lesson => isSameDay(parseISO(lesson.date), date));
     if (filterTutor !== 'all') filtered = filtered.filter(l => l.tutorId === filterTutor);
@@ -2765,6 +2799,13 @@ const AdminDashboard = () => {
     } catch { navigate('/login'); }
   }, [navigate, fetchDashboardData]);
 
+  useEffect(() => {
+  if (activeView === 'announcements') {
+    fetchAnnouncements();
+    fetchAnnouncementCourses();
+  }
+  }, [activeView, fetchAnnouncements, fetchAnnouncementCourses]);
+
   const handleTutorStatusChange = async (tutorId, newStatus) => {
     setActionLoading(true);
     try {
@@ -2780,6 +2821,50 @@ const AdminDashboard = () => {
       }
     } catch (error) { console.error(error); }
     setActionLoading(false);
+  };
+
+  const handleCreateAnnouncement = async (announcementData) => {
+  const res = await fetch(`${API_BASE_URL}/announcements`, {
+    method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+      body: JSON.stringify(announcementData)
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.message || 'Failed to create');
+    return data.data;
+  };
+
+  const handleUpdateAnnouncement = async (id, announcementData) => {
+    const res = await fetch(`${API_BASE_URL}/announcements/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+      body: JSON.stringify(announcementData)
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.message || 'Failed to update');
+    return data.data;
+  };
+
+  // Find and replace your handleDeleteAnnouncement with this:
+  const handleDeleteAnnouncement = async (id) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/announcements/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${getToken()}` }
+      });
+      
+      const data = await res.json();
+      
+      if (data.success) {
+        // THIS LINE IS THE KEY: It tells the dashboard to get the new list
+        fetchAnnouncements(); 
+      } else {
+        alert(data.message || 'Failed to delete');
+      }
+    } catch (error) {
+      console.error('Delete error:', error);
+      alert('Network error while deleting');
+    }
   };
 
   const handleScheduleLesson = async (lessonData) => {
@@ -3100,6 +3185,7 @@ const AdminDashboard = () => {
               { name: 'Tutors', view: 'tutors', icon: Users },
               { name: 'Courses', view: 'courses', icon: BookOpen },
               { name: 'Schedule', view: 'schedule', icon: CalendarIcon },
+              { name: 'Announcements', view: 'announcements', icon: Bell },
               { name: 'Resources', view: 'resources', icon: FileText },
               { name: 'Messages', view: 'messages', icon: MessageSquare },
               { name: 'Discussions', view: 'discussions', icon: MessageSquare }
@@ -3167,6 +3253,25 @@ const AdminDashboard = () => {
             {activeView === 'courses' && <CourseManagement onBack={() => setActiveView('dashboard')} key="courses" />}
             {activeView === 'messages' && <AdminMessages onBack={() => setActiveView('dashboard')} key="messages" />}
             {activeView === 'resources' && <ResourceManagement onBack={() => setActiveView('dashboard')} key="resources" />}
+            {activeView === 'announcements' && (
+              <AnnouncementManager
+                key="announcements"
+                pageTitle="Campus Announcements"
+                pageDescription="Post updates for the entire student body or specific courses."
+                announcements={announcements}
+                loading={announcementsLoading}
+                allowCreate={true}
+                allowCommon={true}
+                courseOptions={announcementCourses}
+                currentUserId={admin?.id || admin?._id}
+                currentUserRole={admin?.role}
+                onBack={() => setActiveView('dashboard')}
+                onRefresh={fetchAnnouncements}
+                onCreateAnnouncement={handleCreateAnnouncement}
+                onUpdateAnnouncement={handleUpdateAnnouncement}
+                onDeleteAnnouncement={handleDeleteAnnouncement}
+              />
+            )}
             {activeView === 'users' && <UserManagement onBack={() => setActiveView('dashboard')} key="users" />}
             {activeView === 'discussions' && <div key="discussions">{renderDiscussions()}</div>}
 
