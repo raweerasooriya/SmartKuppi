@@ -16,6 +16,8 @@ import {
 import CourseCardHeader from '../components/CourseCardHeader';
 import MessageThread from '../components/MessageThread';
 import AnnouncementManager from '../components/AnnouncementManager';
+import ProfileEditModal from '../components/ProfileEditModal';
+
 
 const API_BASE_URL = 'http://localhost:5000/api';
 
@@ -60,6 +62,7 @@ const StudentDashboard = () => {
   const [supportConversation, setSupportConversation] = useState(null);
   const [loadingSupportMessages, setLoadingSupportMessages] = useState(false);
   const [supportUnreadCount, setSupportUnreadCount] = useState(0);
+  const [showProfileModal, setShowProfileModal] = useState(false);
 
   // Browse courses data
   const [courses, setCourses] = useState([]);
@@ -185,6 +188,11 @@ const StudentDashboard = () => {
     localStorage.removeItem('user');
     localStorage.removeItem('token');
     navigate('/login');
+  };
+
+  const handleProfileUpdate = (updatedUser) => {
+    setUser(updatedUser);
+    localStorage.setItem('user', JSON.stringify(updatedUser));
   };
 
   // Navigation functions
@@ -1613,14 +1621,14 @@ const StudentDashboard = () => {
             <div className="h-8 w-px bg-slate-200 mx-1"></div>
             <div className="relative">
               <button 
-                onClick={() => setProfileDropdown(!profileDropdown)}
-                className="flex items-center space-x-3 p-1.5 hover:bg-slate-100 rounded-xl transition-colors"
+                onClick={() => setShowProfileModal(true)}
+                className="flex items-center space-x-3 p-1.5 hover:bg-slate-100 rounded-xl"
               >
                 <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold text-xs">
                   {getInitials()}
                 </div>
-                <span className="hidden md:block text-sm font-medium text-slate-700">{user.name || 'Student'}</span>
-                <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${profileDropdown ? 'rotate-180' : ''}`} />
+                <span className="hidden md:block text-sm font-medium text-slate-700">{user?.name || 'Student'}</span>
+                <Settings className="h-4 w-4 text-slate-400" />
               </button>
 
               <AnimatePresence>
@@ -1682,6 +1690,12 @@ const StudentDashboard = () => {
           </div>
         </footer>
       </div>
+      <ProfileEditModal
+        isOpen={showProfileModal}
+        onClose={() => setShowProfileModal(false)}
+        user={user}
+        onUpdate={handleProfileUpdate}
+      />
     </div>
   );
 };

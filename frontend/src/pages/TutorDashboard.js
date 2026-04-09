@@ -16,6 +16,7 @@ import {
 import CourseCardHeader from '../components/CourseCardHeader';
 import MessageThread from '../components/MessageThread';
 import AnnouncementManager from '../components/AnnouncementManager';
+import ProfileEditModal from '../components/ProfileEditModal';
 
 const API_BASE_URL = 'http://localhost:5000/api';
 const getToken = () => localStorage.getItem('token');
@@ -146,6 +147,7 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
 
   // Resource edit state
   const [showEditResourceModal, setShowEditResourceModal] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
   const [editingResource, setEditingResource] = useState(null);
   const [editResourceForm, setEditResourceForm] = useState({ title: '', description: '', fileType: 'other' });
   const [editResourceError, setEditResourceError] = useState('');
@@ -804,6 +806,11 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
     localStorage.removeItem('user');
     localStorage.removeItem('token');
     navigate('/login');
+  };
+
+  const handleProfileUpdate = (updatedUser) => {
+    setTutor(updatedUser);
+    localStorage.setItem('user', JSON.stringify(updatedUser));
   };
   
   // ========== Render functions for each view ==========
@@ -2815,10 +2822,15 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
             </button>
             <div className="h-8 w-px bg-slate-200"></div>
             <div className="relative">
-              <button onClick={() => setProfileDropdown(!profileDropdown)} className="flex items-center space-x-3 p-1.5 hover:bg-slate-100 rounded-xl transition-colors">
-                <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold text-xs">{tutor ? getInitials(tutor.name) : 'T'}</div>
+              <button 
+                onClick={() => setShowProfileModal(true)}
+                className="flex items-center space-x-3 p-1.5 hover:bg-slate-100 rounded-xl"
+              >
+                <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold text-xs">
+                  {tutor ? getInitials(tutor.name) : 'T'}
+                </div>
                 <span className="hidden md:block text-sm font-medium text-slate-700">{tutor?.name || 'Tutor'}</span>
-                <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${profileDropdown ? 'rotate-180' : ''}`} />
+                <Settings className="h-4 w-4 text-slate-400" />
               </button>
               <AnimatePresence>
                 {profileDropdown && (
@@ -2876,6 +2888,12 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
           </div>
         </footer>
       </div>
+      <ProfileEditModal
+        isOpen={showProfileModal}
+        onClose={() => setShowProfileModal(false)}
+        user={tutor}
+        onUpdate={handleProfileUpdate}
+      />
     </div>
   );
 };

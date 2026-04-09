@@ -18,6 +18,8 @@ import {
 
 import MessageThread from '../components/MessageThread';
 import AnnouncementManager from '../components/AnnouncementManager';
+import ProfileEditModal from '../components/ProfileEditModal';
+
 
 const API_BASE_URL = 'http://localhost:5000/api';
 
@@ -2719,6 +2721,9 @@ const AdminDashboard = () => {
   const [announcementsLoading, setAnnouncementsLoading] = useState(false);
   const [announcementCourses, setAnnouncementCourses] = useState([]);
 
+  // Inside AdminDashboard component
+  const [showProfileModal, setShowProfileModal] = useState(false);
+
   // Discussions state
   const [discussions, setDiscussions] = useState([]);
   const [newDiscussion, setNewDiscussion] = useState({ title: '', content: '' });
@@ -2992,6 +2997,10 @@ const fetchAnnouncementCourses = useCallback(async () => {
   };
 
   const handleLogout = () => { localStorage.removeItem('user'); localStorage.removeItem('token'); navigate('/login'); };
+  const handleProfileUpdate = (updatedUser) => {
+    setAdmin(updatedUser);
+    localStorage.setItem('user', JSON.stringify(updatedUser));
+  };
   const getInitials = (name) => name?.split(' ').map(n=>n[0]).join('').toUpperCase().slice(0,2) || 'AD';
   const getStatusBadge = (status) => {
     const map = {
@@ -3210,8 +3219,43 @@ const fetchAnnouncementCourses = useCallback(async () => {
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <header className="h-20 bg-white border-b border-slate-200 flex items-center justify-between px-4 sm:px-8 sticky top-0 z-30">
-          <div className="flex items-center space-x-4"><button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-2 rounded-lg hover:bg-slate-100"><Menu className="h-6 w-6" /></button><h1 className="text-xl font-bold text-slate-900">{activeView === 'dashboard' ? 'Dashboard' : activeView === 'tutors' ? 'Tutor Management' : activeView === 'schedule' ? 'Schedule Management' : activeView === 'courses' ? 'Course Management' : activeView === 'messages' ? 'Messages' : activeView === 'resources' ? 'Resources' : 'User Management'}</h1></div>
-          <div className="flex items-center space-x-4"><button className="relative p-2 text-slate-500 hover:bg-slate-100 rounded-xl"><Bell className="h-5 w-5" /><span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full"></span></button><div className="h-8 w-px bg-slate-200"></div><div className="relative"><button className="flex items-center space-x-3 p-1.5 hover:bg-slate-100 rounded-xl"><div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold text-xs">{admin ? getInitials(admin.name) : 'AD'}</div><span className="hidden md:block text-sm font-medium text-slate-700">{admin?.name?.split(' ')[0] || 'Admin'}</span><ChevronDown className="h-4 w-4 text-slate-400" /></button></div></div>
+          {/* Left side - page title */}
+          <div className="flex items-center space-x-4">
+            <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-2 rounded-lg hover:bg-slate-100">
+              <Menu className="h-6 w-6" />
+            </button>
+            <h1 className="text-xl font-bold text-slate-900">
+              {activeView === 'dashboard' ? 'Dashboard' : 
+              activeView === 'tutors' ? 'Tutor Management' : 
+              activeView === 'schedule' ? 'Schedule Management' : 
+              activeView === 'courses' ? 'Course Management' : 
+              activeView === 'messages' ? 'Messages' : 
+              activeView === 'resources' ? 'Resources' : 'User Management'}
+            </h1>
+          </div>
+
+          {/* Right side - notifications and profile */}
+          <div className="flex items-center space-x-4">
+            <button className="relative p-2 text-slate-500 hover:bg-slate-100 rounded-xl">
+              <Bell className="h-5 w-5" />
+              <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full"></span>
+            </button>
+            <div className="h-8 w-px bg-slate-200"></div>
+            
+            {/* Profile button that opens modal */}
+            <button 
+              onClick={() => setShowProfileModal(true)}
+              className="flex items-center space-x-3 p-1.5 hover:bg-slate-100 rounded-xl"
+            >
+              <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold text-xs">
+                {admin ? getInitials(admin.name) : 'AD'}
+              </div>
+              <span className="hidden md:block text-sm font-medium text-slate-700">
+                {admin?.name?.split(' ')[0] || 'Admin'}
+              </span>
+              <Settings className="h-4 w-4 text-slate-400" />
+            </button>
+          </div>
         </header>
         <main className="flex-1 overflow-y-auto p-4 sm:p-8">
           <AnimatePresence mode="wait">
@@ -3284,6 +3328,13 @@ const fetchAnnouncementCourses = useCallback(async () => {
       <ScheduleLessonModal isOpen={showScheduleModal} onClose={() => setShowScheduleModal(false)} tutors={tutors} onSchedule={handleScheduleLesson} loading={scheduleLoading} />
       {showDetailsModal && selectedTutor && <TutorDetailModal tutor={selectedTutor} onClose={() => { setShowDetailsModal(false); setSelectedTutor(null); }} onStatusChange={handleTutorStatusChange} actionLoading={actionLoading} />}
       {scheduleSuccess && (<motion.div initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 50 }} className="fixed bottom-4 right-4 bg-emerald-500 text-white px-4 py-3 rounded-xl shadow-lg flex items-center gap-2 z-50"><CheckCircle className="h-5 w-5" />Lesson scheduled successfully!</motion.div>)}
+
+      <ProfileEditModal
+        isOpen={showProfileModal}
+        onClose={() => setShowProfileModal(false)}
+        user={admin}
+        onUpdate={handleProfileUpdate}
+      />
     </div>
   );
 };

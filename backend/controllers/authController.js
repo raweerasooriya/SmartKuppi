@@ -205,6 +205,73 @@ const getMe = async (req, res) => {
   }
 };
 
+// @desc    Update current user's profile
+// @route   PUT /api/auth/profile
+// @access  Private
+const updateProfile = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const {
+      name, email, phone,
+      currentPassword, newPassword,
+      studentId, university, faculty, department, academicYear,
+      qualifications, specialization, yearsOfExperience, bio, linkedin, subjects
+    } = req.body;
+
+    const user = await User.findById(userId).select('+password');
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // Update basic fields
+    if (name) user.name = name;
+    if (email) user.email = email;
+    if (phone) user.phone = phone;
+
+    // Update role-specific fields
+    if (user.role === 'student') {
+      if (studentId !== undefined) user.studentId = studentId;
+      if (university !== undefined) user.university = university;
+      if (faculty !== undefined) user.faculty = faculty;
+      if (department !== undefined) user.department = department;
+      if (academicYear !== undefined) user.academicYear = academicYear;
+    } else if (user.role === 'tutor') {
+      if (qualifications !== undefined) user.qualifications = qualifications;
+      if (specialization !== undefined) user.specialization = specialization;
+      if (yearsOfExperience !== undefined) user.yearsOfExperience = yearsOfExperience;
+      if (bio !== undefined) user.bio = bio;
+      if (linkedin !== undefined) user.linkedin = linkedin;
+      if (subjects !== undefined) user.subjects = subjects;
+    }
+
+    // Change password if requested
+    if (currentPassword && newPassword) {
+      const isMatch = await user.matchPassword(currentPassword);
+      if (!isMatch) {
+        return res.status(400).json({ success: false, message: 'Current password is incorrect' });
+      }
+      if (newPassword.length < 8) {
+        return res.status(400).json({ success: false, message: 'Password must be at least 8 characters' });
+      }
+      const salt = await bcrypt.genSalt(10);
+      user.password = await bcrypt.hash(newPassword, salt);
+    }
+
+    await user.save();
+
+    // Return updated user without password
+    const updatedUser = await User.findById(userId).select('-password');
+    res.json({
+      success: true,
+      message: 'Profile updated successfully',
+      data: updatedUser
+    });
+  } catch (error) {
+    console.error('Profile update error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 // @desc    Check if email exists
 // @route   POST /api/auth/check-email
 // @access  Public
@@ -255,5 +322,6 @@ module.exports = {
   login,
   getMe,
   checkEmail,
-  getAdmins
+  getAdmins,
+  updateProfile   
 };
