@@ -66,6 +66,9 @@ router.put('/lessons/:id', adminUpdateLesson);
 // Delete lesson
 router.delete('/lessons/:id', adminDeleteLesson);
 
+router.put('/lessons/:id', adminUpdateLesson);
+router.delete('/lessons/:id', adminDeleteLesson);
+
 // ============ DASHBOARD STATS ROUTES ============
 router.get('/stats', getDashboardStats);
 router.get('/recent-activities', getRecentActivities);
