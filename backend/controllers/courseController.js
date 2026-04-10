@@ -71,14 +71,14 @@ exports.getCourse = async (req, res) => {
 // @access  Private (Tutor who created it)
 exports.updateCourse = async (req, res) => {
   try {
-    let course = await Course.findById(req.params.id);
+    const course = await Course.findById(req.params.id);
     if (!course) return res.status(404).json({ success: false, message: 'Course not found' });
-    if (course.tutor.toString() !== req.user.id && req.user.role !== 'admin') {
-      return res.status(403).json({ success: false, message: 'Not authorized' });
+    // Check ownership
+    if (req.user.role !== 'admin' && course.tutor.toString() !== req.user.id) {
+      return res.status(403).json({ success: false, message: 'Not authorized to update this course' });
     }
-
-    course = await Course.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
-    res.json({ success: true, data: course });
+    const updated = await Course.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    res.json({ success: true, data: updated });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

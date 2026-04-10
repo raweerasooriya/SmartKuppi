@@ -18,7 +18,8 @@ router.get('/:id', getCourse);
 router.use(protect);
 router.post('/', authorize('tutor', 'admin'), createCourse);
 router.get('/tutor/courses', authorize('tutor', 'admin'), getTutorCourses);
-router.put('/:id', authorize('tutor', 'admin'), updateCourse);
+router.put('/:id', protect, authorize('tutor', 'admin'), updateCourse);
 router.delete('/:id', authorize('tutor', 'admin'), deleteCourse);
+
 
 module.exports = router;

@@ -90,6 +90,19 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
   const [createErrors, setCreateErrors] = useState({});
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [createSuccess, setCreateSuccess] = useState(false);
+
+  // Edit Course state
+  const [showEditCourseModal, setShowEditCourseModal] = useState(false);
+  const [editingCourse, setEditingCourse] = useState(null);
+  const [editCourseFormData, setEditCourseFormData] = useState({
+    title: '',
+    subject: '',
+    description: '',
+    price: 0,
+    thumbnail: ''
+  });
+  const [editCourseError, setEditCourseError] = useState('');
+  const [editCourseLoading, setEditCourseLoading] = useState(false);
   
   // Lesson create state
   const [lessonFormData, setLessonFormData] = useState({
@@ -302,6 +315,69 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
       headers: { Authorization: `Bearer ${getToken()}` } 
     });
     fetchAnnouncements();
+  };
+
+  // ========== Course Edit Handlers ==========
+  const openEditCourseModal = (course) => {
+    setEditingCourse(course);
+    setEditCourseFormData({
+      title: course.title,
+      subject: course.subject,
+      description: course.description,
+      price: course.price,
+      thumbnail: course.thumbnail || ''
+    });
+    setEditCourseError('');
+    setShowEditCourseModal(true);
+  };
+
+  const handleUpdateCourse = async (e) => {
+    e.preventDefault();
+    setEditCourseError('');
+
+    if (!editCourseFormData.title.trim()) {
+      setEditCourseError('Title is required');
+      return;
+    }
+    if (!editCourseFormData.subject) {
+      setEditCourseError('Subject is required');
+      return;
+    }
+    if (!editCourseFormData.description.trim()) {
+      setEditCourseError('Description is required');
+      return;
+    }
+
+    setEditCourseLoading(true);
+    const token = getToken();
+    try {
+      const res = await fetch(`${API_BASE_URL}/courses/${editingCourse._id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(editCourseFormData)
+      });
+      const data = await res.json();
+      if (data.success) {
+        setShowEditCourseModal(false);
+        // Refresh the courses list
+        const coursesRes = await fetch(`${API_BASE_URL}/courses/tutor/courses`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const coursesData = await coursesRes.json();
+        if (coursesData.success) setCourses(coursesData.data);
+        // Also refresh dashboard stats if needed
+        fetchDashboardData(tutor.id, token);
+      } else {
+        setEditCourseError(data.message || 'Failed to update course');
+      }
+    } catch (error) {
+      setEditCourseError('Network error. Please try again.');
+    } finally {
+      setEditCourseLoading(false);
+    }
   };
 
   const fetchCourseDetail = async (courseId) => {
@@ -970,40 +1046,48 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {courses.map(course => (
-              <div key={course._id} className="bg-white rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-all overflow-hidden group">
+              <div key={course._id} className="bg-white rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-all overflow-hidden group flex flex-col h-full">
                 <CourseCardHeader course={course} height="h-40">
                   <span className="absolute top-3 right-3 px-2 py-1 bg-white/90 text-[10px] font-bold rounded-full">
                     {course.status === 'published' ? 'Published' : 'Draft'}
                   </span>
                 </CourseCardHeader>
-                <div className="p-6">
-                  <div className="flex items-center justify-between mb-2">
+                <div className="p-5 flex flex-col flex-grow">
+                  <div className="flex items-start justify-between mb-2">
                     <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full">
                       {course.subject}
                     </span>
-                    <button className="p-1 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors">
-                      <MoreVertical className="h-4 w-4" />
-                    </button>
                   </div>
-                  <h3 className="text-xl font-bold text-slate-900 mb-2 group-hover:text-indigo-600 transition-colors">
+                  <h3 className="text-lg font-bold text-slate-900 mb-1 line-clamp-2 group-hover:text-indigo-600 transition-colors">
                     {course.title}
                   </h3>
+                  <p className="text-sm text-slate-500 line-clamp-2 mb-3">
+                    {course.description}
+                  </p>
                   <div className="flex items-center gap-4 text-sm text-slate-500 mb-4">
                     <div className="flex items-center gap-1">
                       <Users className="h-4 w-4" />
-                      {course.enrolledCount || 0} students
+                      <span>{course.enrolledCount || 0} students</span>
                     </div>
                     <div className="flex items-center gap-1">
                       <BookOpen className="h-4 w-4" />
-                      {course.lessonCount || 0} lessons
+                      <span>{course.lessonCount || 0} lessons</span>
                     </div>
                   </div>
-                  <button
-                    onClick={() => goToCourseDetail(course._id)}
-                    className="inline-flex items-center text-sm font-bold text-indigo-600 hover:underline"
-                  >
-                    View Course <ExternalLink className="h-4 w-4 ml-1" />
-                  </button>
+                  <div className="flex items-center justify-between mt-auto pt-2 border-t border-slate-100">
+                    <button
+                      onClick={() => goToCourseDetail(course._id)}
+                      className="inline-flex items-center text-sm font-bold text-indigo-600 hover:underline"
+                    >
+                      View Course <ExternalLink className="h-4 w-4 ml-1" />
+                    </button>
+                    <button
+                      onClick={() => openEditCourseModal(course)}
+                      className="inline-flex items-center text-sm font-bold text-amber-600 hover:underline"
+                    >
+                      <Edit2 className="h-4 w-4 mr-1" /> Edit
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -2894,7 +2978,103 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
         user={tutor}
         onUpdate={handleProfileUpdate}
       />
+      {/* Edit Course Modal */}
+      <AnimatePresence>
+        {showEditCourseModal && editingCourse && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4"
+            onClick={() => setShowEditCourseModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.95 }}
+              onClick={e => e.stopPropagation()}
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+            >
+              <div className="sticky top-0 bg-white border-b p-6 flex justify-between">
+                <h2 className="text-2xl font-bold">Edit Course</h2>
+                <button onClick={() => setShowEditCourseModal(false)} className="p-2 hover:bg-slate-100 rounded-xl">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <form onSubmit={handleUpdateCourse} className="p-6 space-y-5">
+                {editCourseError && (
+                  <div className="bg-rose-50 p-3 rounded-xl text-rose-600 text-sm">{editCourseError}</div>
+                )}
+                <div>
+                  <label className="text-xs font-bold uppercase">Course Title *</label>
+                  <input
+                    type="text"
+                    value={editCourseFormData.title}
+                    onChange={e => setEditCourseFormData({ ...editCourseFormData, title: e.target.value })}
+                    className="w-full px-4 py-3 bg-slate-50 rounded-xl"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold uppercase">Subject *</label>
+                  <select
+                    value={editCourseFormData.subject}
+                    onChange={e => setEditCourseFormData({ ...editCourseFormData, subject: e.target.value })}
+                    className="w-full px-4 py-3 bg-slate-50 rounded-xl"
+                  >
+                    <option value="">Select subject</option>
+                    {[
+                      'Mathematics', 'Physics', 'Chemistry', 'Biology',
+                      'Computer Science', 'Programming', 'Web Development',
+                      'Database Systems', 'Networking', 'English Literature',
+                      'Economics', 'Business Studies', 'Accounting'
+                    ].map(s => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-bold uppercase">Description *</label>
+                  <textarea
+                    rows={3}
+                    value={editCourseFormData.description}
+                    onChange={e => setEditCourseFormData({ ...editCourseFormData, description: e.target.value })}
+                    className="w-full px-4 py-3 bg-slate-50 rounded-xl"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold uppercase">Price (LKR)</label>
+                  <input
+                    type="number"
+                    value={editCourseFormData.price}
+                    onChange={e => setEditCourseFormData({ ...editCourseFormData, price: parseInt(e.target.value) || 0 })}
+                    className="w-full px-4 py-3 bg-slate-50 rounded-xl"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold uppercase">Thumbnail URL</label>
+                  <input
+                    type="url"
+                    value={editCourseFormData.thumbnail}
+                    onChange={e => setEditCourseFormData({ ...editCourseFormData, thumbnail: e.target.value })}
+                    className="w-full px-4 py-3 bg-slate-50 rounded-xl"
+                  />
+                </div>
+                <div className="flex gap-3 pt-4">
+                  <button type="button" onClick={() => setShowEditCourseModal(false)} className="flex-1 py-3 bg-white border-2 rounded-xl font-bold">
+                    Cancel
+                  </button>
+                  <button type="submit" disabled={editCourseLoading} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold flex items-center justify-center gap-2">
+                    {editCourseLoading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <Save className="h-4 w-4" />}
+                    {editCourseLoading ? 'Saving...' : 'Save Changes'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
+
   );
 };
 
