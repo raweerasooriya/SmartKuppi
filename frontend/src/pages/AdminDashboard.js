@@ -734,34 +734,78 @@ const handleUpdateCourse = async (e) => {
   );
 };
 
-// ─── Admin-Tutor Messaging Component (real API) ──────────────────────────
+
+// ─── Admin Messaging Component (supports tutors, students, and admins) ────
+// ─── Admin Messaging Component (supports tutors, students, and admins) ────
 const AdminMessages = ({ onBack }) => {
   const [conversations, setConversations] = useState([]);
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [tutors, setTutors] = useState([]);
   const [showNewChat, setShowNewChat] = useState(false);
+  const [chatRole, setChatRole] = useState('tutor');
+  const [chatSearch, setChatSearch] = useState('');
+  const [usersList, setUsersList] = useState([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
   const [sending, setSending] = useState(false);
   const [newMessage, setNewMessage] = useState('');
 
+  // Fetch conversations and preserve selected conversation (even if not yet in backend)
   const fetchConversations = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/admin/messages/conversations`, { headers: { Authorization: `Bearer ${getToken()}` } });
+      const res = await fetch(`${API_BASE_URL}/admin/messages/conversations`, {
+        headers: { Authorization: `Bearer ${getToken()}` }
+      });
       const data = await res.json();
-      if (data.success) setConversations(data.data);
-    } catch (error) { console.error(error); }
+      if (data.success) {
+        const backendConvs = data.data;
+        // Merge temporary conversations that are not yet in backend
+        const allConvs = [...backendConvs];
+        // Add any temporary conversation (id starts with 'temp-') that is not already in backend
+        conversations.forEach(conv => {
+          if (conv.id.startsWith('temp-') && !backendConvs.find(bc => bc.otherUser._id === conv.otherUser._id)) {
+            allConvs.push(conv);
+          }
+        });
+        setConversations(allConvs);
+        // If we have a selected conversation, find it (or keep the existing one)
+        if (selectedConversation) {
+          const updated = allConvs.find(c => c.otherUser._id === selectedConversation.otherUser._id);
+          if (updated) setSelectedConversation(updated);
+        }
+      }
+    } catch (error) {
+      console.error(error);
+    }
     setLoading(false);
   };
-  const fetchTutors = async () => {
+
+  const fetchUsersByRole = async (role, search = '') => {
+    setLoadingUsers(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/admin/tutors`, { headers: { Authorization: `Bearer ${getToken()}` } });
+      let url = `${API_BASE_URL}/admin/users?role=${role}&limit=50`;
+      if (search) url += `&search=${encodeURIComponent(search)}`;
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${getToken()}` } });
       const data = await res.json();
-      if (data.success) setTutors(data.data);
-    } catch (error) { console.error(error); }
+      if (data.success) setUsersList(data.data);
+      else setUsersList([]);
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      setUsersList([]);
+    } finally {
+      setLoadingUsers(false);
+    }
   };
-  useEffect(() => { fetchConversations(); fetchTutors(); }, []);
+
+  useEffect(() => {
+    fetchConversations();
+  }, []);
+
+  useEffect(() => {
+    if (showNewChat) fetchUsersByRole(chatRole, chatSearch);
+  }, [showNewChat, chatRole, chatSearch]);
 
   const handleSelectConversation = (conv) => setSelectedConversation(conv);
+
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedConversation) return;
     setSending(true);
@@ -769,53 +813,226 @@ const AdminMessages = ({ onBack }) => {
       const res = await fetch(`${API_BASE_URL}/admin/messages/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
-        body: JSON.stringify({ receiverId: selectedConversation.otherUser._id, content: newMessage, courseId: selectedConversation.course?._id || null })
+        body: JSON.stringify({
+          receiverId: selectedConversation.otherUser._id,
+          content: newMessage,
+          courseId: selectedConversation.course?._id || null
+        })
       });
       const data = await res.json();
       if (data.success) {
         setNewMessage('');
-        fetchConversations(); // refresh
+        await fetchConversations(); // Refresh after sending
       }
-    } catch (error) { console.error(error); }
+    } catch (error) {
+      console.error(error);
+    }
     setSending(false);
   };
-  const handleStartNewChat = () => setShowNewChat(true);
-  const handleSelectTutorForChat = async (tutor) => {
+
+  const handleStartNewChat = () => {
+    setChatRole('tutor');
+    setChatSearch('');
+    setUsersList([]);
+    setShowNewChat(true);
+  };
+
+  const handleSelectUserForChat = (user) => {
     // Check if conversation already exists
-    const existing = conversations.find(c => c.otherUser._id === tutor._id);
+    let existing = conversations.find(c => c.otherUser._id === user._id);
     if (existing) {
       setSelectedConversation(existing);
-      setShowNewChat(false);
     } else {
-      // Optionally create a new conversation via API
-      setSelectedConversation({ id: `temp-${tutor._id}`, otherUser: tutor, messages: [], lastMessage: null });
-      setShowNewChat(false);
+      // Create a permanent temporary conversation (id starts with 'temp-')
+      const tempConv = {
+        id: `temp-${user._id}`,
+        otherUser: user,
+        course: null,
+        messages: [],
+        lastMessage: null,
+        unreadCount: 0
+      };
+      setConversations(prev => [tempConv, ...prev]);
+      setSelectedConversation(tempConv);
+    }
+    setShowNewChat(false);
+  };
+
+  const getRoleBadgeColor = (role) => {
+    switch (role) {
+      case 'admin': return 'bg-rose-100 text-rose-700';
+      case 'tutor': return 'bg-indigo-100 text-indigo-700';
+      default: return 'bg-emerald-100 text-emerald-700';
     }
   };
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-7xl mx-auto space-y-6">
-      <div className="flex items-center gap-4"><button onClick={onBack} className="p-2 hover:bg-white border rounded-xl"><ChevronLeft className="h-5 w-5" /></button><div><h1 className="text-2xl font-bold">Admin - Tutor Messaging</h1><p className="text-slate-500">Communicate with tutors</p></div></div>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[70vh]">
-        <div className="bg-white rounded-3xl border shadow-sm flex flex-col overflow-hidden">
-          <div className="p-4 border-b flex justify-between items-center"><h3 className="font-bold">Conversations</h3><button onClick={handleStartNewChat} className="p-2 bg-indigo-50 text-indigo-600 rounded-lg"><Plus className="h-4 w-4" /></button></div>
-          <div className="flex-1 overflow-y-auto divide-y">
-            {loading ? (<div className="p-4 text-center">Loading...</div>) : conversations.length === 0 ? (<div className="p-8 text-center text-slate-400">No conversations yet</div>) : (conversations.map(conv => (<button key={conv.id} onClick={() => handleSelectConversation(conv)} className={`w-full p-4 text-left hover:bg-slate-50 transition-all ${selectedConversation?.id === conv.id ? 'bg-indigo-50 border-r-4 border-indigo-600' : ''}`}><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">{conv.otherUser.name?.split(' ').map(n=>n[0]).join('').toUpperCase().slice(0,2)}</div><div className="flex-1 min-w-0"><div className="flex justify-between"><p className="font-bold truncate">{conv.otherUser.name}</p><span className="text-[10px] text-slate-400">{conv.lastMessage ? new Date(conv.lastMessage.createdAt).toLocaleTimeString() : ''}</span></div><p className="text-xs text-slate-500 truncate">{conv.lastMessage?.content || 'No messages'}</p></div>{conv.unread > 0 && <span className="w-2 h-2 bg-indigo-600 rounded-full"></span>}</div></button>)))}
-          </div>
+      <div className="flex items-center gap-4">
+        <button onClick={onBack} className="p-2 hover:bg-white border rounded-xl">
+          <ChevronLeft className="h-5 w-5" />
+        </button>
+        <div>
+          <h1 className="text-2xl font-bold">Admin Messaging</h1>
+          <p className="text-slate-500">Communicate with tutors, students, and other admins</p>
         </div>
-          <div className="lg:col-span-2 bg-white rounded-3xl border shadow-sm flex flex-col overflow-hidden">
-            {selectedConversation ? (
-              <MessageThread conversation={selectedConversation} onMessageSent={fetchConversations} />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[70vh]">
+        {/* Conversations list */}
+        <div className="bg-white rounded-3xl border shadow-sm flex flex-col overflow-hidden">
+          <div className="p-4 border-b flex justify-between items-center">
+            <h3 className="font-bold">Conversations</h3>
+            <button onClick={handleStartNewChat} className="p-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors">
+              <Plus className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto divide-y">
+            {loading ? (
+              <div className="p-4 text-center">Loading...</div>
+            ) : conversations.length === 0 ? (
+              <div className="p-8 text-center text-slate-400">No conversations yet</div>
             ) : (
-              <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
-                <MessageSquare size={48} className="mb-4 opacity-20" />
-                <p>Select a conversation or start a new chat</p>
-              </div>
+              conversations.map((conv) => (
+                <button
+                  key={conv.id}
+                  onClick={() => handleSelectConversation(conv)}
+                  className={`w-full p-4 text-left hover:bg-slate-50 transition-all ${
+                    selectedConversation?.id === conv.id ? 'bg-indigo-50 border-r-4 border-indigo-600' : ''
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">
+                      {conv.otherUser.name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between">
+                        <p className="font-bold truncate">{conv.otherUser.name}</p>
+                        <span className="text-[10px] text-slate-400">
+                          {conv.lastMessage ? new Date(conv.lastMessage.createdAt).toLocaleTimeString() : ''}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${getRoleBadgeColor(conv.otherUser.role)}`}>
+                          {conv.otherUser.role}
+                        </span>
+                        <p className="text-xs text-slate-500 truncate">
+                          {conv.lastMessage?.content || 'No messages'}
+                        </p>
+                      </div>
+                    </div>
+                    {conv.unread > 0 && <span className="w-2 h-2 bg-indigo-600 rounded-full"></span>}
+                  </div>
+                </button>
+              ))
             )}
           </div>
+        </div>
+
+        {/* Message thread */}
+        <div className="lg:col-span-2 bg-white rounded-3xl border shadow-sm flex flex-col overflow-hidden">
+          {selectedConversation ? (
+            <MessageThread conversation={selectedConversation} onMessageSent={fetchConversations} />
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
+              <MessageSquare size={48} className="mb-4 opacity-20" />
+              <p>Select a conversation or start a new chat</p>
+            </div>
+          )}
+        </div>
       </div>
+
       {/* New Chat Modal */}
-      <AnimatePresence>{showNewChat && (<motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowNewChat(false)}><motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }} onClick={e => e.stopPropagation()} className="bg-white rounded-3xl w-full max-w-md p-6"><h3 className="text-xl font-bold mb-4">Start New Chat</h3><div className="space-y-2 max-h-96 overflow-y-auto">{tutors.map(t => (<button key={t._id} onClick={() => handleSelectTutorForChat(t)} className="w-full p-3 rounded-2xl border hover:border-indigo-500 text-left flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center font-bold">{t.name?.split(' ').map(n=>n[0]).join('').toUpperCase().slice(0,2)}</div><div><p className="font-bold">{t.name}</p><p className="text-xs text-slate-500">{t.email}</p></div></button>))}</div><div className="mt-4 flex justify-end"><button onClick={() => setShowNewChat(false)} className="px-4 py-2 bg-slate-100 rounded-lg">Cancel</button></div></motion.div></motion.div>)}</AnimatePresence>
+      <AnimatePresence>
+        {showNewChat && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm"
+            onClick={() => setShowNewChat(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.95 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-3xl w-full max-w-md p-6"
+            >
+              <h3 className="text-xl font-bold mb-4">Start New Chat</h3>
+
+              {/* Role selector */}
+              <div className="mb-4">
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-widest mb-2">Select user type</label>
+                <div className="flex gap-2">
+                  {['admin', 'student', 'tutor'].map((role) => (
+                    <button
+                      key={role}
+                      onClick={() => setChatRole(role)}
+                      className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+                        chatRole === role ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      {role.charAt(0).toUpperCase() + role.slice(1)}s
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Search input */}
+              <div className="mb-4">
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-widest mb-2">Search</label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search by name or email..."
+                    value={chatSearch}
+                    onChange={(e) => setChatSearch(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:border-indigo-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Users list */}
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {loadingUsers ? (
+                  <div className="flex justify-center py-8">
+                    <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                  </div>
+                ) : usersList.length === 0 ? (
+                  <div className="text-center py-8 text-slate-500">No users found</div>
+                ) : (
+                  usersList.map((user) => (
+                    <button
+                      key={user._id}
+                      onClick={() => handleSelectUserForChat(user)}
+                      className="w-full p-3 rounded-2xl border border-slate-200 hover:border-indigo-500 hover:bg-indigo-50 transition-all text-left flex items-center gap-3"
+                    >
+                      <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">
+                        {user.name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-bold text-slate-900">{user.name}</p>
+                        <p className="text-xs text-slate-500">{user.email}</p>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${getRoleBadgeColor(user.role)}`}>
+                          {user.role}
+                        </span>
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+
+              <div className="mt-4 flex justify-end">
+                <button onClick={() => setShowNewChat(false)} className="px-4 py-2 bg-slate-100 rounded-lg text-slate-700 hover:bg-slate-200">
+                  Cancel
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 };

@@ -86,6 +86,9 @@ router.get('/resources', getAllResources);
 router.get('/messages/conversations', getAdminConversations);
 router.post('/messages/send', adminSendMessage);
 
+router.get('/users', getAllUsers);
+
+
 // ============ RESOURCE MANAGEMENT (ADMIN) ============
 // (keep your existing GET route)
 router.get('/resources', getAllResources);

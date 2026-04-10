@@ -773,8 +773,7 @@ exports.getAdminConversations = async (req, res) => {
   try {
     const Message = require('../models/Message');
     const adminId = req.user.id;
-    
-    // Find all messages where admin is either sender or receiver, and the other party is a tutor
+
     const messages = await Message.find({
       $or: [
         { sender: adminId, receiver: { $ne: adminId } },
@@ -785,25 +784,23 @@ exports.getAdminConversations = async (req, res) => {
       .populate('receiver', 'name email role')
       .populate('course', 'title')
       .sort({ createdAt: -1 });
-    
-    // Group by the other user (tutor) and course
+
     const conversationsMap = new Map();
-    
+
     for (const msg of messages) {
       const otherUser = msg.sender._id.toString() === adminId ? msg.receiver : msg.sender;
-      // Only include tutors (and possibly admins? but admin only needs tutors)
-      if (otherUser.role !== 'tutor') continue;
-      
+      // ✅ REMOVE THE LINE: if (otherUser.role !== 'tutor') continue;
       const courseId = msg.course?._id?.toString() || 'general';
       const key = `${otherUser._id}_${courseId}`;
-      
+
       if (!conversationsMap.has(key)) {
         conversationsMap.set(key, {
           id: key,
           otherUser: {
             _id: otherUser._id,
             name: otherUser.name,
-            email: otherUser.email
+            email: otherUser.email,
+            role: otherUser.role
           },
           course: msg.course || null,
           lastMessage: msg,
@@ -812,18 +809,14 @@ exports.getAdminConversations = async (req, res) => {
         });
       } else {
         const existing = conversationsMap.get(key);
-        if (msg.createdAt > existing.lastMessage.createdAt) {
-          existing.lastMessage = msg;
-        }
-        if (msg.receiver._id.toString() === adminId && !msg.read) {
-          existing.unread += 1;
-        }
+        if (msg.createdAt > existing.lastMessage.createdAt) existing.lastMessage = msg;
+        if (msg.receiver._id.toString() === adminId && !msg.read) existing.unread++;
       }
     }
-    
+
     const conversations = Array.from(conversationsMap.values())
       .sort((a, b) => new Date(b.lastMessage.createdAt) - new Date(a.lastMessage.createdAt));
-    
+
     res.json({ success: true, data: conversations });
   } catch (error) {
     console.error('Error fetching admin conversations:', error);
