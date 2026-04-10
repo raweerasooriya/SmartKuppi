@@ -1410,7 +1410,7 @@ const ScheduleManagementView = ({
     }
     return null;
   };
-
+  
   const getStatusBadge = (date) => {
     const lessonDate = new Date(date);
     const now = new Date();
@@ -3478,6 +3478,25 @@ const AdminDashboard = () => {
   // Inside AdminDashboard component
   const [showProfileModal, setShowProfileModal] = useState(false);
 
+  // Audit logs state
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditFilters, setAuditFilters] = useState({
+    user: '',
+    action: '',
+    startDate: '',
+    endDate: ''
+  });
+  const [auditPagination, setAuditPagination] = useState({ page: 1, limit: 50, total: 0 });
+
+  const [showAuditFilters, setShowAuditFilters] = useState(false);
+  const [localAuditFilters, setLocalAuditFilters] = useState({
+    user: '',
+    action: '',
+    startDate: '',
+    endDate: ''
+  });
+  
   // Discussions state
   const [discussions, setDiscussions] = useState([]);
   const [newDiscussion, setNewDiscussion] = useState({ title: '', content: '' });
@@ -3579,6 +3598,12 @@ const AdminDashboard = () => {
     fetchAnnouncementCourses();
   }
   }, [activeView, fetchAnnouncements, fetchAnnouncementCourses]);
+
+  useEffect(() => {
+  if (activeView === 'auditLogs') {
+      fetchAuditLogs();
+    }
+  }, [activeView, auditFilters, auditPagination.page]);
 
   const handleTutorStatusChange = async (tutorId, newStatus) => {
     setActionLoading(true);
@@ -3876,6 +3901,42 @@ const AdminDashboard = () => {
   fetchDiscussions();
   };
 
+  const fetchAuditLogs = async () => {
+    setAuditLoading(true);
+    const token = getToken();
+    let url = `${API_BASE_URL}/admin/audit-logs?page=${auditPagination.page}&limit=50`;
+    if (auditFilters.user) url += `&user=${auditFilters.user}`;
+    if (auditFilters.action) url += `&action=${auditFilters.action}`;
+    if (auditFilters.startDate) url += `&startDate=${auditFilters.startDate}`;
+    if (auditFilters.endDate) url += `&endDate=${auditFilters.endDate}`;
+    try {
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      const data = await res.json();
+      console.log('Audit logs response:', data); // Debug log
+      if (data.success) {
+        setAuditLogs(data.data);
+        setAuditPagination(prev => ({ ...prev, total: data.pagination.total }));
+      } else {
+        console.error('Failed to fetch audit logs:', data.message);
+      }
+    } catch (error) {
+      console.error('Error fetching audit logs:', error);
+    } finally {
+      setAuditLoading(false);
+    }
+  };
+
+  const applyAuditFilters = () => {
+    setAuditFilters(localAuditFilters);
+    setAuditPagination(prev => ({ ...prev, page: 1 }));
+  };
+
+  const resetAuditFilters = () => {
+    setLocalAuditFilters({ user: '', action: '', startDate: '', endDate: '' });
+    setAuditFilters({ user: '', action: '', startDate: '', endDate: '' });
+    setAuditPagination(prev => ({ ...prev, page: 1 }));
+  };
+
   const handleLogout = () => { localStorage.removeItem('user'); localStorage.removeItem('token'); navigate('/login'); };
   const handleProfileUpdate = (updatedUser) => {
     setAdmin(updatedUser);
@@ -4072,6 +4133,7 @@ const AdminDashboard = () => {
               { name: 'Dashboard', view: 'dashboard', icon: Layout },
               { name: 'User Management', view: 'users', icon: Shield },
               { name: 'Tutors', view: 'tutors', icon: Users },
+              { name: 'Audit Logs', view: 'auditLogs', icon: FileText },
               { name: 'Courses', view: 'courses', icon: BookOpen },
               { name: 'Schedule', view: 'schedule', icon: CalendarIcon },
               { name: 'Announcements', view: 'announcements', icon: Bell },
@@ -4200,7 +4262,111 @@ const AdminDashboard = () => {
             )}
             {activeView === 'users' && <UserManagement onBack={() => setActiveView('dashboard')} key="users" />}
             {activeView === 'discussions' && <div key="discussions">{renderDiscussions()}</div>}
+            {activeView === 'auditLogs' && (
+              <motion.div key="auditLogs" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-7xl mx-auto space-y-8">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <button onClick={() => setActiveView('dashboard')} className="p-2 hover:bg-white border rounded-xl">
+                      <ChevronLeft className="h-5 w-5" />
+                    </button>
+                    <div>
+                      <h1 className="text-2xl font-bold">Audit Logs</h1>
+                      <p className="text-slate-500">Track all admin actions and system events</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setShowAuditFilters(!showAuditFilters)} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold">
+                    <Filter className="h-4 w-4" /> {showAuditFilters ? 'Hide Filters' : 'Show Filters'}
+                  </button>
+                </div>
 
+                {showAuditFilters && (
+                  <div className="bg-white p-5 rounded-3xl border shadow-sm">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      <div>
+                        <label className="text-xs font-bold uppercase">User</label>
+                        <select value={localAuditFilters.user} onChange={e => setLocalAuditFilters({...localAuditFilters, user: e.target.value})} className="w-full px-4 py-3 bg-slate-50 rounded-xl">
+                          <option value="">All Users</option>
+                          {[...new Map(auditLogs.map(log => [log.user.id, { id: log.user.id, name: log.user.name }])).values()].map(u => (
+                            <option key={u.id} value={u.id}>{u.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold uppercase">Action</label>
+                        <select value={localAuditFilters.action} onChange={e => setLocalAuditFilters({...localAuditFilters, action: e.target.value})} className="w-full px-4 py-3 bg-slate-50 rounded-xl">
+                          <option value="">All Actions</option>
+                          {[...new Set(auditLogs.map(log => log.action))].map(a => (
+                            <option key={a} value={a}>{a.replace(/_/g, ' ')}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold uppercase">Start Date</label>
+                        <input type="date" value={localAuditFilters.startDate} onChange={e => setLocalAuditFilters({...localAuditFilters, startDate: e.target.value})} className="w-full px-4 py-3 bg-slate-50 rounded-xl" />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold uppercase">End Date</label>
+                        <input type="date" value={localAuditFilters.endDate} onChange={e => setLocalAuditFilters({...localAuditFilters, endDate: e.target.value})} className="w-full px-4 py-3 bg-slate-50 rounded-xl" />
+                      </div>
+                    </div>
+                    <div className="flex gap-3 mt-4">
+                      <button onClick={applyAuditFilters} className="px-6 py-2 bg-indigo-600 text-white rounded-xl font-bold">Apply Filters</button>
+                      <button onClick={resetAuditFilters} className="px-6 py-2 bg-slate-100 text-slate-700 rounded-xl font-bold">Reset</button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="bg-white rounded-3xl border shadow-sm overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-slate-50 border-b">
+                        <tr>
+                          <th className="px-6 py-4 text-left text-[10px] font-bold">Timestamp</th>
+                          <th className="px-6 py-4 text-left text-[10px] font-bold">User</th>
+                          <th className="px-6 py-4 text-left text-[10px] font-bold">Action</th>
+                          <th className="px-6 py-4 text-left text-[10px] font-bold">Entity</th>
+                          <th className="px-6 py-4 text-left text-[10px] font-bold">Details</th>
+                          <th className="px-6 py-4 text-left text-[10px] font-bold">IP Address</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {auditLoading ? (
+                          <tr><td colSpan="6" className="px-6 py-12 text-center"><div className="w-8 h-8 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto"></div></td></tr>
+                        ) : auditLogs.length === 0 ? (
+                          <tr><td colSpan="6" className="px-6 py-12 text-center text-slate-500">No audit logs found</td></tr>
+                        ) : (
+                          auditLogs.map(log => (
+                            <tr key={log._id} className="hover:bg-slate-50">
+                              <td className="px-6 py-4 text-sm">{new Date(log.timestamp).toLocaleString()}</td>
+                              <td className="px-6 py-4">
+                                <div>
+                                  <p className="font-medium">{log.user.name}</p>
+                                  <p className="text-[10px] text-slate-500">{log.user.role}</p>
+                                </div>
+                              </td>
+                              <td className="px-6 py-4"><span className="px-2 py-1 bg-indigo-50 text-indigo-700 text-xs rounded-full">{log.action.replace(/_/g, ' ')}</span></td>
+                              <td className="px-6 py-4">{log.entity}</td>
+                              <td className="px-6 py-4 text-sm max-w-xs truncate">{JSON.stringify(log.details)}</td>
+                              <td className="px-6 py-4 text-xs">{log.ipAddress || 'N/A'}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                  {auditPagination.total > 0 && (
+                    <div className="px-6 py-4 bg-slate-50 border-t flex items-center justify-between">
+                      <p className="text-xs text-slate-500">Showing {auditLogs.length} of {auditPagination.total} logs</p>
+                      <div className="flex gap-2">
+                        <button onClick={() => setAuditPagination(prev => ({ ...prev, page: Math.max(1, prev.page - 1) }))} disabled={auditPagination.page === 1} className="px-3 py-1 bg-white border rounded-lg text-sm disabled:opacity-50">Previous</button>
+                        <span className="px-3 py-1 text-sm">Page {auditPagination.page}</span>
+                        <button onClick={() => setAuditPagination(prev => ({ ...prev, page: prev.page + 1 }))} disabled={auditLogs.length < auditPagination.limit} className="px-3 py-1 bg-white border rounded-lg text-sm disabled:opacity-50">Next</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            )}
           </AnimatePresence>
         </main>
         <footer className="bg-white border-t border-slate-100 py-6 px-8"><div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4"><div className="flex items-center space-x-2"><BookOpen className="h-5 w-5 text-indigo-500" /><span className="font-bold text-slate-900">Smart<span className="text-indigo-500">Kuppi</span></span><span className="text-xs text-slate-400">© 2024 Admin Portal</span></div><div className="flex items-center space-x-6 text-xs font-bold text-slate-400 uppercase"><button className="hover:text-indigo-500">Docs</button><button className="hover:text-indigo-500">Support</button><button className="hover:text-indigo-500">Privacy</button></div></div></footer>

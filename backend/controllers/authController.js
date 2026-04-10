@@ -1,13 +1,13 @@
-// backend/controllers/authController.js
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 const { validationResult } = require('express-validator');
 const bcrypt = require('bcryptjs');
+const AuditLog = require('../models/AuditLog');
+const { logAudit } = require('../middleware/auditMiddleware');
 
 console.log('JWT_SECRET loaded:', process.env.JWT_SECRET ? 'Yes' : 'No');
 console.log('JWT_EXPIRE value:', process.env.JWT_EXPIRE);
 
-// Helper function
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRE || '7d'
@@ -36,31 +36,30 @@ const registerStudent = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, salt);
 
     const user = await User.create({
-      name,
-      email,
-      password: hashedPassword,
-      phone,
-      role: 'student',
-      status: 'active',
-      studentId,
-      university,
-      faculty,
-      department,
-      academicYear
+      name, email, password: hashedPassword, phone, role: 'student', status: 'active',
+      studentId, university, faculty, department, academicYear
     });
 
     const token = generateToken(user._id);
+
+    // Audit log: registration (no req.user yet, use user object)
+    await logAudit({
+      userId: user._id,
+      userName: user.name,
+      userEmail: user.email,
+      userRole: user.role,
+      action: 'REGISTER_STUDENT',
+      entity: 'User',
+      entityId: user._id,
+      details: { email, studentId },
+      req
+    });
+
     res.status(201).json({
       success: true,
       message: 'Student account created successfully',
       token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        status: user.status
-      }
+      user: { id: user._id, name, email, role: 'student', status: 'active' }
     });
   } catch (error) {
     console.error('Student registration error:', error);
@@ -87,32 +86,29 @@ const registerTutor = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, salt);
 
     const user = await User.create({
-      name,
-      email,
-      password: hashedPassword,
-      phone,
-      role: 'tutor',
-      status: 'pending',
-      qualifications,
-      specialization,
-      yearsOfExperience: Number(yearsOfExperience),
-      bio,
-      linkedin: linkedin || '',
-      subjects: subjects || []
+      name, email, password: hashedPassword, phone, role: 'tutor', status: 'pending',
+      qualifications, specialization, yearsOfExperience: Number(yearsOfExperience), bio, linkedin: linkedin || '', subjects: subjects || []
     });
 
     const token = generateToken(user._id);
+
+    await logAudit({
+      userId: user._id,
+      userName: user.name,
+      userEmail: user.email,
+      userRole: user.role,
+      action: 'REGISTER_TUTOR',
+      entity: 'User',
+      entityId: user._id,
+      details: { email, specialization },
+      req
+    });
+
     res.status(201).json({
       success: true,
       message: 'Tutor application submitted successfully. Pending admin approval.',
       token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        status: user.status
-      }
+      user: { id: user._id, name, email, role: 'tutor', status: 'pending' }
     });
   } catch (error) {
     console.error('Tutor registration error:', error);
@@ -126,63 +122,60 @@ const registerTutor = async (req, res) => {
 const login = async (req, res) => {
   try {
     const { email, password } = req.body;
-
     if (!email || !password) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Please provide email and password' 
-      });
+      return res.status(400).json({ success: false, message: 'Please provide email and password' });
     }
 
     const user = await User.findOne({ email }).select('+password');
     if (!user) {
-      return res.status(401).json({ 
-        success: false, 
-        message: 'Invalid credentials' 
+      await logAudit({
+        userId: null, userName: 'Unknown', userEmail: email, userRole: 'unknown',
+        action: 'LOGIN_FAILED', entity: 'Auth', details: { reason: 'User not found' }, req
       });
+      return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 
     const isMatch = await user.matchPassword(password);
     if (!isMatch) {
-      return res.status(401).json({ 
-        success: false, 
-        message: 'Invalid credentials' 
+      await logAudit({
+        userId: user._id, userName: user.name, userEmail: user.email, userRole: user.role,
+        action: 'LOGIN_FAILED', entity: 'Auth', details: { reason: 'Wrong password' }, req
       });
+      return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 
     if (user.status === 'suspended') {
-      return res.status(403).json({ 
-        success: false, 
-        message: 'Your account has been suspended. Please contact admin.' 
+      await logAudit({
+        userId: user._id, userName: user.name, userEmail: user.email, userRole: user.role,
+        action: 'LOGIN_FAILED', entity: 'Auth', details: { reason: 'Account suspended' }, req
       });
+      return res.status(403).json({ success: false, message: 'Your account has been suspended. Please contact admin.' });
     }
 
     if (user.role === 'tutor' && user.status === 'pending') {
-      return res.status(403).json({ 
-        success: false, 
-        message: 'Your tutor application is pending approval. Please wait for admin verification.' 
+      await logAudit({
+        userId: user._id, userName: user.name, userEmail: user.email, userRole: user.role,
+        action: 'LOGIN_FAILED', entity: 'Auth', details: { reason: 'Tutor pending approval' }, req
       });
+      return res.status(403).json({ success: false, message: 'Your tutor application is pending approval. Please wait for admin verification.' });
     }
 
     const token = generateToken(user._id);
 
+    // Successful login
+    await logAudit({
+      userId: user._id, userName: user.name, userEmail: user.email, userRole: user.role,
+      action: 'LOGIN_SUCCESS', entity: 'Auth', details: {}, req
+    });
+
     res.status(200).json({
       success: true,
       token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        status: user.status
-      }
+      user: { id: user._id, name: user.name, email: user.email, role: user.role, status: user.status }
     });
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: error.message 
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -192,16 +185,10 @@ const login = async (req, res) => {
 const getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
-    res.status(200).json({
-      success: true,
-      user
-    });
+    res.status(200).json({ success: true, user });
   } catch (error) {
     console.error('Get profile error:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: error.message 
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -244,7 +231,7 @@ const updateProfile = async (req, res) => {
       if (subjects !== undefined) user.subjects = subjects;
     }
 
-    // Change password if requested
+    let passwordChanged = false;
     if (currentPassword && newPassword) {
       const isMatch = await user.matchPassword(currentPassword);
       if (!isMatch) {
@@ -255,17 +242,20 @@ const updateProfile = async (req, res) => {
       }
       const salt = await bcrypt.genSalt(10);
       user.password = await bcrypt.hash(newPassword, salt);
+      passwordChanged = true;
     }
 
     await user.save();
 
-    // Return updated user without password
-    const updatedUser = await User.findById(userId).select('-password');
-    res.json({
-      success: true,
-      message: 'Profile updated successfully',
-      data: updatedUser
+    await logAudit({
+      userId: req.user.id, userName: req.user.name, userEmail: req.user.email, userRole: req.user.role,
+      action: 'UPDATE_PROFILE', entity: 'User', entityId: user._id,
+      details: { passwordChanged, updatedFields: Object.keys(req.body).filter(k => k !== 'currentPassword' && k !== 'newPassword') },
+      req
     });
+
+    const updatedUser = await User.findById(userId).select('-password');
+    res.json({ success: true, message: 'Profile updated successfully', data: updatedUser });
   } catch (error) {
     console.error('Profile update error:', error);
     res.status(500).json({ success: false, message: error.message });
@@ -278,27 +268,12 @@ const updateProfile = async (req, res) => {
 const checkEmail = async (req, res) => {
   try {
     const { email } = req.body;
-    
-    if (!email) {
-      return res.status(400).json({
-        success: false,
-        message: 'Email is required'
-      });
-    }
-    
+    if (!email) return res.status(400).json({ success: false, message: 'Email is required' });
     const user = await User.findOne({ email });
-    
-    res.json({
-      success: true,
-      exists: !!user
-    });
-    
+    res.json({ success: true, exists: !!user });
   } catch (error) {
     console.error('Check email error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error'
-    });
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 };
 
@@ -315,7 +290,6 @@ const getAdmins = async (req, res) => {
   }
 };
 
-// ✅ Export all functions
 module.exports = {
   registerStudent,
   registerTutor,
@@ -323,5 +297,5 @@ module.exports = {
   getMe,
   checkEmail,
   getAdmins,
-  updateProfile   
+  updateProfile
 };

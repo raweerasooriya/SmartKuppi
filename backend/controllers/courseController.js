@@ -2,6 +2,8 @@ const Course = require('../models/Course');
 const Lesson = require('../models/Lesson');
 const Resource = require('../models/Resource');
 const Enrollment = require('../models/Enrollment');
+const AuditLog = require('../models/AuditLog');
+const { logAudit } = require('../middleware/auditMiddleware');
 
 // @desc    Create a new course
 // @route   POST /api/courses
@@ -12,13 +14,15 @@ exports.createCourse = async (req, res) => {
     const tutor = req.user.id;
 
     const course = await Course.create({
-      title,
-      description,
-      subject,
-      tutor,
-      thumbnail: thumbnail || '',
-      price: price || 0,
-      status: status || 'published'
+      title, description, subject, tutor,
+      thumbnail: thumbnail || '', price: price || 0, status: status || 'published'
+    });
+
+    await logAudit({
+      userId: req.user.id, userName: req.user.name, userEmail: req.user.email, userRole: req.user.role,
+      action: 'CREATE_COURSE', entity: 'Course', entityId: course._id,
+      details: { title, subject, price },
+      req
     });
 
     res.status(201).json({ success: true, data: course });
@@ -36,7 +40,6 @@ exports.getCourses = async (req, res) => {
     let query = { status: 'published' };
     if (subject) query.subject = subject;
     if (search) query.title = { $regex: search, $options: 'i' };
-
     const courses = await Course.find(query).populate('tutor', 'name email');
     res.json({ success: true, data: courses });
   } catch (error) {
@@ -51,15 +54,10 @@ exports.getCourse = async (req, res) => {
   try {
     const course = await Course.findById(req.params.id).populate('tutor', 'name email');
     if (!course) return res.status(404).json({ success: false, message: 'Course not found' });
-
-    // If user is logged in and is tutor of this course or is enrolled, allow to see even if draft
     if (req.user && (req.user.id === course.tutor._id.toString() || req.user.role === 'admin')) {
       return res.json({ success: true, data: course });
     }
-    // Otherwise only show if published
-    if (course.status === 'published') {
-      return res.json({ success: true, data: course });
-    }
+    if (course.status === 'published') return res.json({ success: true, data: course });
     res.status(403).json({ success: false, message: 'Not authorized to view this course' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -73,11 +71,18 @@ exports.updateCourse = async (req, res) => {
   try {
     const course = await Course.findById(req.params.id);
     if (!course) return res.status(404).json({ success: false, message: 'Course not found' });
-    // Check ownership
     if (req.user.role !== 'admin' && course.tutor.toString() !== req.user.id) {
       return res.status(403).json({ success: false, message: 'Not authorized to update this course' });
     }
     const updated = await Course.findByIdAndUpdate(req.params.id, req.body, { new: true });
+
+    await logAudit({
+      userId: req.user.id, userName: req.user.name, userEmail: req.user.email, userRole: req.user.role,
+      action: 'UPDATE_COURSE', entity: 'Course', entityId: course._id,
+      details: { title: updated.title, updatedFields: Object.keys(req.body) },
+      req
+    });
+
     res.json({ success: true, data: updated });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -95,12 +100,18 @@ exports.deleteCourse = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
 
-    // Delete related data
+    await logAudit({
+      userId: req.user.id, userName: req.user.name, userEmail: req.user.email, userRole: req.user.role,
+      action: 'DELETE_COURSE', entity: 'Course', entityId: course._id,
+      details: { title: course.title, tutorId: course.tutor },
+      req
+    });
+
     await Lesson.deleteMany({ course: req.params.id });
     await Resource.deleteMany({ course: req.params.id });
     await Enrollment.deleteMany({ course: req.params.id });
-
     await course.deleteOne();
+
     res.json({ success: true, message: 'Course deleted successfully' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

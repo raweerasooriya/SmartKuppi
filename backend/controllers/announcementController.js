@@ -1,6 +1,8 @@
 const Announcement = require('../models/Announcement');
 const Course = require('../models/Course');
 const Enrollment = require('../models/Enrollment');
+const AuditLog = require('../models/AuditLog');
+const { logAudit } = require('../middleware/auditMiddleware');
 
 const countLetters = (value) => (value || '').replace(/[^A-Za-z]/g, '').length;
 
@@ -57,31 +59,21 @@ exports.getAnnouncements = async (req, res) => {
   try {
     let query = {};
 
-    // 1. If Admin: Show EVERYTHING
     if (req.user.role === 'admin') {
       query = {};
-    } 
-    
-    // 2. If Tutor: Show own posts + Global posts + Admin posts for their courses
-    else if (req.user.role === 'tutor') {
-      // First, find all courses that belong to this tutor
+    } else if (req.user.role === 'tutor') {
       const myCourses = await Course.find({ tutor: req.user.id }).select('_id');
       const myCourseIds = myCourses.map(c => c._id);
-
       query = {
         $or: [
-          { createdBy: req.user.id },            // Announcements the tutor wrote
-          { audience: 'common' },                // Global announcements from Admin
-          { course: { $in: myCourseIds } }       // Admin announcements for this tutor's modules
+          { createdBy: req.user.id },
+          { audience: 'common' },
+          { course: { $in: myCourseIds } }
         ]
       };
-    } 
-    
-    // 3. If Student: Show common + their enrolled modules
-    else {
+    } else {
       const enrolled = await Enrollment.find({ student: req.user.id, status: 'active' });
       const enrolledCourseIds = enrolled.map(e => e.course);
-      
       query = {
         $or: [
           { audience: 'common' },
@@ -92,7 +84,6 @@ exports.getAnnouncements = async (req, res) => {
 
     const announcements = await populateAnnouncement(Announcement.find(query).sort('-createdAt'));
     res.json({ success: true, data: announcements });
-
   } catch (error) {
     console.error('Error fetching announcements:', error);
     res.status(500).json({ success: false, message: 'Server error' });
@@ -137,8 +128,20 @@ exports.createAnnouncement = async (req, res) => {
       createdByRole: req.user.role
     });
 
-    const populated = await populateAnnouncement(Announcement.findById(announcement._id));
+    // Audit log
+    await logAudit({
+      userId: req.user.id,
+      userName: req.user.name,
+      userEmail: req.user.email,
+      userRole: req.user.role,
+      action: 'CREATE_ANNOUNCEMENT',
+      entity: 'Announcement',
+      entityId: announcement._id,
+      details: { title, audience, course: courseId },
+      req
+    });
 
+    const populated = await populateAnnouncement(Announcement.findById(announcement._id));
     res.status(201).json({ success: true, data: populated });
   } catch (error) {
     console.error('Error creating announcement:', error);
@@ -152,22 +155,18 @@ exports.createAnnouncement = async (req, res) => {
 exports.updateAnnouncement = async (req, res) => {
   try {
     const announcement = await Announcement.findById(req.params.id);
-
     if (!announcement) {
       return res.status(404).json({ success: false, message: 'Announcement not found' });
     }
-
     if (announcement.createdBy.toString() !== req.user.id) {
       return res.status(403).json({ success: false, message: 'Not authorized to edit this announcement' });
     }
 
     const { title, content, audience = announcement.audience, course } = req.body;
     const errors = validateAnnouncementInput({ title, content, audience, course: audience === 'module' ? course : true });
-
     if (Object.keys(errors).length > 0) {
       return res.status(400).json({ success: false, message: 'Please fix the highlighted fields', errors });
     }
-
     if (req.user.role === 'tutor' && audience !== 'module') {
       return res.status(403).json({ success: false, message: 'Tutors can only save module announcements' });
     }
@@ -187,6 +186,19 @@ exports.updateAnnouncement = async (req, res) => {
     announcement.course = courseId;
     await announcement.save();
 
+    // Audit log
+    await logAudit({
+      userId: req.user.id,
+      userName: req.user.name,
+      userEmail: req.user.email,
+      userRole: req.user.role,
+      action: 'UPDATE_ANNOUNCEMENT',
+      entity: 'Announcement',
+      entityId: announcement._id,
+      details: { title, audience, course: courseId },
+      req
+    });
+
     const populated = await populateAnnouncement(Announcement.findById(announcement._id));
     res.json({ success: true, data: populated });
   } catch (error) {
@@ -201,21 +213,28 @@ exports.updateAnnouncement = async (req, res) => {
 exports.deleteAnnouncement = async (req, res) => {
   try {
     const announcement = await Announcement.findById(req.params.id);
-
     if (!announcement) {
       return res.status(404).json({ success: false, message: 'Announcement not found' });
     }
 
-    // FIX: Allow if user is the Creator OR if user is an Admin
     const isOwner = announcement.createdBy.toString() === req.user.id;
     const isAdmin = req.user.role === 'admin';
-
     if (!isOwner && !isAdmin) {
-      return res.status(403).json({ 
-        success: false, 
-        message: 'Not authorized to delete this announcement' 
-      });
+      return res.status(403).json({ success: false, message: 'Not authorized to delete this announcement' });
     }
+
+    // Audit log before deletion
+    await logAudit({
+      userId: req.user.id,
+      userName: req.user.name,
+      userEmail: req.user.email,
+      userRole: req.user.role,
+      action: 'DELETE_ANNOUNCEMENT',
+      entity: 'Announcement',
+      entityId: announcement._id,
+      details: { title: announcement.title, audience: announcement.audience },
+      req
+    });
 
     await announcement.deleteOne();
     res.json({ success: true, message: 'Announcement deleted successfully' });

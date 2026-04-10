@@ -295,6 +295,20 @@ const StudentDashboard = () => {
     }
   };
 
+  const handleDownload = async (resourceId, fileUrl) => {
+    try {
+      const token = localStorage.getItem('token');
+      await fetch(`${API_BASE_URL}/resources/${resourceId}/download`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      window.open(`${API_BASE_URL}${fileUrl}`, '_blank');
+    } catch (error) {
+      console.error('Download error:', error);
+      window.open(`${API_BASE_URL}${fileUrl}`, '_blank');
+    }
+  };
+
   useEffect(() => {
     if (activeView === 'browse') {
       let filtered = courses;
@@ -1381,9 +1395,12 @@ const StudentDashboard = () => {
                       <h4 className="font-bold text-slate-900">{res.title}</h4>
                       <p className="text-xs text-slate-500">{res.fileType?.toUpperCase() || 'FILE'} • {res.downloads} downloads</p>
                     </div>
-                    <a href={`${API_BASE_URL}${res.fileUrl}`} download className="p-2 text-slate-400 hover:text-indigo-600 rounded-lg transition-colors">
-                      <Download className="h-5 w-5" />
-                    </a>
+                      <button
+                        onClick={() => handleDownload(res._id, res.fileUrl)}
+                        className="p-2 text-slate-400 hover:text-indigo-600 rounded-lg transition-colors"
+                      >
+                        <Download className="h-5 w-5" />
+                      </button>
                   </div>
                 )) : <p className="text-slate-500 text-center py-4">No resources yet.</p>}
               </div>
