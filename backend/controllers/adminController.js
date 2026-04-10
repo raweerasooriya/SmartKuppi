@@ -868,3 +868,51 @@ exports.adminSendMessage = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+// @desc    Update a course (admin only)
+// @route   PUT /api/admin/courses/:id
+// @access  Private (Admin only)
+exports.adminUpdateCourse = async (req, res) => {
+  try {
+    const { title, subject, description, price, thumbnail } = req.body;
+    const course = await Course.findByIdAndUpdate(
+      req.params.id,
+      { title, subject, description, price, thumbnail },
+      { new: true, runValidators: true }
+    ).populate('tutor', 'name email');
+    
+    if (!course) {
+      return res.status(404).json({ success: false, message: 'Course not found' });
+    }
+    
+    res.json({ success: true, data: course });
+  } catch (error) {
+    console.error('Error updating course:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Delete a course (admin only)
+// @route   DELETE /api/admin/courses/:id
+// @access  Private (Admin only)
+exports.adminDeleteCourse = async (req, res) => {
+  try {
+    const course = await Course.findById(req.params.id);
+    if (!course) {
+      return res.status(404).json({ success: false, message: 'Course not found' });
+    }
+    
+    // Optional: Delete associated lessons and resources
+    const Lesson = require('../models/Lesson');
+    const Resource = require('../models/Resource');
+    
+    await Lesson.deleteMany({ course: req.params.id });
+    await Resource.deleteMany({ course: req.params.id });
+    await course.deleteOne();
+    
+    res.json({ success: true, message: 'Course and all associated lessons/resources deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting course:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

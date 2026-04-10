@@ -27,7 +27,10 @@ const {
   adminCreateCourse,
   getAllResources,
   getAdminConversations,
-  adminSendMessage
+  adminSendMessage,
+
+  adminUpdateCourse,
+  adminDeleteCourse
 } = require('../controllers/adminController');
 
 // All admin routes require authentication and admin role
@@ -70,6 +73,8 @@ router.get('/recent-activities', getRecentActivities);
 // ============ COURSE MANAGEMENT (ADMIN) ============
 router.get('/courses', getAllCourses);
 router.post('/courses', adminCreateCourse);
+router.put('/courses/:id', protect, authorize('admin'), adminUpdateCourse);
+router.delete('/courses/:id', protect, authorize('admin'), adminDeleteCourse);
 
 // ============ RESOURCE MANAGEMENT (ADMIN) ============
 router.get('/resources', getAllResources);
@@ -81,6 +86,7 @@ router.post('/messages/send', adminSendMessage);
 // ============ RESOURCE MANAGEMENT (ADMIN) ============
 // (keep your existing GET route)
 router.get('/resources', getAllResources);
+
 
 // Add these two new routes:
 router.put('/resources/:id', protect, authorize('admin'), async (req, res) => {

@@ -284,6 +284,11 @@ const CourseManagement = ({ onBack }) => {
   const [selectedTutor, setSelectedTutor] = useState(null);
   const [newCourse, setNewCourse] = useState({ title: '', subject: '', description: '', price: 0, thumbnail: '' });
   const subjectsList = ['Programming', 'Web Development', 'Database', 'Networking', 'Mathematics', 'Physics', 'Chemistry', 'Biology', 'English', 'Economics'];
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingCourse, setEditingCourse] = useState(null);
+  const [editFormData, setEditFormData] = useState({ title: '', subject: '', description: '', price: 0, thumbnail: '' });
+  const [editFormError, setEditFormError] = useState('');
+  const [editFormLoading, setEditFormLoading] = useState(false);
 
   const fetchCourses = async () => {
     setLoading(true);
@@ -336,6 +341,83 @@ const CourseManagement = ({ onBack }) => {
     return matchSearch && matchSubject;
   });
 
+  const handleEditCourse = (course) => {
+  setEditingCourse(course);
+  setEditFormData({
+    title: course.title,
+    subject: course.subject,
+    description: course.description,
+    price: course.price,
+    thumbnail: course.thumbnail || ''
+  });
+  setShowEditModal(true);
+};
+
+const handleUpdateCourse = async (e) => {
+  e.preventDefault();
+  setEditFormError('');
+  
+  if (!editFormData.title.trim()) {
+    setEditFormError('Title is required');
+    return;
+  }
+  if (!editFormData.subject) {
+    setEditFormError('Subject is required');
+    return;
+  }
+  if (!editFormData.description.trim()) {
+    setEditFormError('Description is required');
+    return;
+  }
+  
+  setEditFormLoading(true);
+  const token = getToken();
+  try {
+    const res = await fetch(`${API_BASE_URL}/admin/courses/${editingCourse._id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify(editFormData)
+    });
+      const data = await res.json();
+      if (data.success) {
+        setShowEditModal(false);
+        fetchCourses(); // refresh the list
+        setEditingCourse(null);
+      } else {
+        setEditFormError(data.message || 'Failed to update course');
+      }
+    } catch (error) {
+      setEditFormError('Network error. Please try again.');
+    } finally {
+      setEditFormLoading(false);
+    }
+  };
+
+  const handleDeleteCourse = async (courseId) => {
+    if (!window.confirm('Are you sure you want to permanently delete this course? This will also delete all lessons and resources associated with it. This action cannot be undone.')) {
+      return;
+    }
+    const token = getToken();
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/courses/${courseId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchCourses(); // refresh the list
+      } else {
+        alert(data.message || 'Failed to delete course');
+      }
+    } catch (error) {
+      console.error('Error deleting course:', error);
+      alert('Network error. Please try again.');
+    }
+  };
+
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-7xl mx-auto space-y-8">
       <div className="flex justify-between items-center">
@@ -374,7 +456,22 @@ const CourseManagement = ({ onBack }) => {
                     <td className="px-6 py-4">{course.enrolledCount || 0}</td>
                     <td className="px-6 py-4">{course.price === 0 ? 'Free' : `LKR ${course.price}`}</td>
                     <td className="px-6 py-4 text-sm">{new Date(course.createdAt).toLocaleDateString()}</td>
-                    <td className="px-6 py-4 text-right"><div className="flex justify-end gap-1"><button className="p-2 text-slate-400 hover:bg-slate-100 rounded-lg"><Edit3 className="h-4 w-4" /></button><button className="p-2 text-rose-400 hover:bg-rose-50 rounded-lg"><Trash2 className="h-4 w-4" /></button></div></td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex justify-end gap-1">
+                        <button 
+                          onClick={() => handleEditCourse(course)}
+                          className="p-2 text-slate-400 hover:bg-slate-100 rounded-lg"
+                        >
+                          <Edit3 className="h-4 w-4" />
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteCourse(course._id)}
+                          className="p-2 text-rose-400 hover:bg-rose-50 rounded-lg"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -383,10 +480,256 @@ const CourseManagement = ({ onBack }) => {
         </div>
       )}
       {/* Create Course Modal */}
-      <AnimatePresence>{showCreateModal && (<motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4" onClick={() => setShowCreateModal(false)}><motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }} onClick={e => e.stopPropagation()} className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"><div className="sticky top-0 bg-white border-b p-6 flex justify-between"><h2 className="text-2xl font-bold">Create Course</h2><button onClick={() => { setShowCreateModal(false); setStep(1); setSelectedTutor(null); }} className="p-2 hover:bg-slate-100 rounded-xl"><X className="h-5 w-5" /></button></div><div className="p-6">
-        {step === 1 && (<div className="space-y-4"><p className="text-sm text-slate-600">Select a tutor for this course.</p><div className="space-y-2 max-h-[400px] overflow-y-auto">{tutors.map(t => (<button key={t._id} onClick={() => { setSelectedTutor(t); setStep(2); }} className="w-full p-4 rounded-2xl border-2 hover:border-indigo-500 text-left flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">{t.name?.split(' ').map(n=>n[0]).join('').toUpperCase().slice(0,2)}</div><div><p className="font-bold">{t.name}</p><p className="text-xs text-slate-500">{t.email}</p></div></button>))}</div></div>)}
-        {step === 2 && (<form onSubmit={handleCreateCourse} className="space-y-4"><div className="bg-slate-50 p-3 rounded-xl flex items-center gap-3"><div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center"><User className="h-5 w-5 text-indigo-600" /></div><div><p className="text-xs text-slate-500">Selected Tutor</p><p className="font-bold">{selectedTutor?.name}</p></div><button type="button" onClick={() => setStep(1)} className="ml-auto text-indigo-600 text-sm">Change</button></div><div><label className="text-xs font-bold uppercase">Course Title *</label><input type="text" value={newCourse.title} onChange={e => setNewCourse({...newCourse, title: e.target.value})} className="w-full px-4 py-3 bg-slate-50 rounded-xl" /></div><div><label className="text-xs font-bold uppercase">Subject *</label><select value={newCourse.subject} onChange={e => setNewCourse({...newCourse, subject: e.target.value})} className="w-full px-4 py-3 bg-slate-50 rounded-xl"><option value="">Select subject</option>{subjectsList.map(s => <option key={s} value={s}>{s}</option>)}</select></div><div><label className="text-xs font-bold uppercase">Description *</label><textarea rows={3} value={newCourse.description} onChange={e => setNewCourse({...newCourse, description: e.target.value})} className="w-full px-4 py-3 bg-slate-50 rounded-xl" /></div><div><label className="text-xs font-bold uppercase">Price (LKR)</label><input type="number" value={newCourse.price} onChange={e => setNewCourse({...newCourse, price: parseInt(e.target.value) || 0})} className="w-full px-4 py-3 bg-slate-50 rounded-xl" /></div><div><label className="text-xs font-bold uppercase">Thumbnail URL</label><input type="url" value={newCourse.thumbnail} onChange={e => setNewCourse({...newCourse, thumbnail: e.target.value})} className="w-full px-4 py-3 bg-slate-50 rounded-xl" /></div>{formError && <div className="bg-rose-50 p-3 rounded-xl text-rose-600 text-sm">{formError}</div>}<div className="flex gap-3 pt-4"><button type="button" onClick={() => setShowCreateModal(false)} className="flex-1 py-3 bg-white border-2 rounded-xl font-bold">Cancel</button><button type="submit" disabled={formLoading} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold flex items-center justify-center gap-2">{formLoading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <Save className="h-4 w-4" />}{formLoading ? 'Creating...' : 'Create Course'}</button></div></form>)}
-      </div></motion.div></motion.div>)}</AnimatePresence>
+      <AnimatePresence>
+        {showCreateModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4"
+            onClick={() => setShowCreateModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.95 }}
+              onClick={e => e.stopPropagation()}
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+            >
+              <div className="sticky top-0 bg-white border-b p-6 flex justify-between">
+                <h2 className="text-2xl font-bold">Create Course</h2>
+                <button
+                  onClick={() => {
+                    setShowCreateModal(false);
+                    setStep(1);
+                    setSelectedTutor(null);
+                  }}
+                  className="p-2 hover:bg-slate-100 rounded-xl"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="p-6">
+                {step === 1 && (
+                  <div className="space-y-4">
+                    <p className="text-sm text-slate-600">Select a tutor for this course.</p>
+                    <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                      {tutors.map(t => (
+                        <button
+                          key={t._id}
+                          onClick={() => {
+                            setSelectedTutor(t);
+                            setStep(2);
+                          }}
+                          className="w-full p-4 rounded-2xl border-2 hover:border-indigo-500 text-left flex items-center gap-3"
+                        >
+                          <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">
+                            {t.name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                          </div>
+                          <div>
+                            <p className="font-bold">{t.name}</p>
+                            <p className="text-xs text-slate-500">{t.email}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {step === 2 && (
+                  <form onSubmit={handleCreateCourse} className="space-y-4">
+                    <div className="bg-slate-50 p-3 rounded-xl flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center">
+                        <User className="h-5 w-5 text-indigo-600" />
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500">Selected Tutor</p>
+                        <p className="font-bold">{selectedTutor?.name}</p>
+                      </div>
+                      <button type="button" onClick={() => setStep(1)} className="ml-auto text-indigo-600 text-sm">
+                        Change
+                      </button>
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold uppercase">Course Title *</label>
+                      <input
+                        type="text"
+                        value={newCourse.title}
+                        onChange={e => setNewCourse({ ...newCourse, title: e.target.value })}
+                        className="w-full px-4 py-3 bg-slate-50 rounded-xl"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold uppercase">Subject *</label>
+                      <select
+                        value={newCourse.subject}
+                        onChange={e => setNewCourse({ ...newCourse, subject: e.target.value })}
+                        className="w-full px-4 py-3 bg-slate-50 rounded-xl"
+                      >
+                        <option value="">Select subject</option>
+                        {subjectsList.map(s => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold uppercase">Description *</label>
+                      <textarea
+                        rows={3}
+                        value={newCourse.description}
+                        onChange={e => setNewCourse({ ...newCourse, description: e.target.value })}
+                        className="w-full px-4 py-3 bg-slate-50 rounded-xl"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold uppercase">Price (LKR)</label>
+                      <input
+                        type="number"
+                        value={newCourse.price}
+                        onChange={e => setNewCourse({ ...newCourse, price: parseInt(e.target.value) || 0 })}
+                        className="w-full px-4 py-3 bg-slate-50 rounded-xl"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold uppercase">Thumbnail URL</label>
+                      <input
+                        type="url"
+                        value={newCourse.thumbnail}
+                        onChange={e => setNewCourse({ ...newCourse, thumbnail: e.target.value })}
+                        className="w-full px-4 py-3 bg-slate-50 rounded-xl"
+                      />
+                    </div>
+                    {formError && <div className="bg-rose-50 p-3 rounded-xl text-rose-600 text-sm">{formError}</div>}
+                    <div className="flex gap-3 pt-4">
+                      <button
+                        type="button"
+                        onClick={() => setShowCreateModal(false)}
+                        className="flex-1 py-3 bg-white border-2 rounded-xl font-bold"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={formLoading}
+                        className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold flex items-center justify-center gap-2"
+                      >
+                        {formLoading ? (
+                          <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        ) : (
+                          <Save className="h-4 w-4" />
+                        )}
+                        {formLoading ? 'Creating...' : 'Create Course'}
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Edit Course Modal */}
+      <AnimatePresence>
+        {showEditModal && editingCourse && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4"
+            onClick={() => setShowEditModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.95 }}
+              onClick={e => e.stopPropagation()}
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+            >
+              <div className="sticky top-0 bg-white border-b p-6 flex justify-between">
+                <h2 className="text-2xl font-bold">Edit Course</h2>
+                <button onClick={() => setShowEditModal(false)} className="p-2 hover:bg-slate-100 rounded-xl">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <form onSubmit={handleUpdateCourse} className="p-6 space-y-5">
+                {editFormError && (
+                  <div className="bg-rose-50 p-3 rounded-xl text-rose-600 text-sm">{editFormError}</div>
+                )}
+                <div>
+                  <label className="text-xs font-bold uppercase">Course Title *</label>
+                  <input
+                    type="text"
+                    value={editFormData.title}
+                    onChange={e => setEditFormData({ ...editFormData, title: e.target.value })}
+                    className="w-full px-4 py-3 bg-slate-50 rounded-xl"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold uppercase">Subject *</label>
+                  <select
+                    value={editFormData.subject}
+                    onChange={e => setEditFormData({ ...editFormData, subject: e.target.value })}
+                    className="w-full px-4 py-3 bg-slate-50 rounded-xl"
+                  >
+                    <option value="">Select subject</option>
+                    {subjectsList.map(s => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-bold uppercase">Description *</label>
+                  <textarea
+                    rows={3}
+                    value={editFormData.description}
+                    onChange={e => setEditFormData({ ...editFormData, description: e.target.value })}
+                    className="w-full px-4 py-3 bg-slate-50 rounded-xl"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold uppercase">Price (LKR)</label>
+                  <input
+                    type="number"
+                    value={editFormData.price}
+                    onChange={e => setEditFormData({ ...editFormData, price: parseInt(e.target.value) || 0 })}
+                    className="w-full px-4 py-3 bg-slate-50 rounded-xl"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold uppercase">Thumbnail URL</label>
+                  <input
+                    type="url"
+                    value={editFormData.thumbnail}
+                    onChange={e => setEditFormData({ ...editFormData, thumbnail: e.target.value })}
+                    className="w-full px-4 py-3 bg-slate-50 rounded-xl"
+                  />
+                </div>
+                <div className="flex gap-3 pt-4">
+                  <button type="button" onClick={() => setShowEditModal(false)} className="flex-1 py-3 bg-white border-2 rounded-xl font-bold">
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={editFormLoading}
+                    className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold flex items-center justify-center gap-2"
+                  >
+                    {editFormLoading ? (
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    ) : (
+                      <Save className="h-4 w-4" />
+                    )}
+                    {editFormLoading ? 'Saving...' : 'Save Changes'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 };
