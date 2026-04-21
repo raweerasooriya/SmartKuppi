@@ -4,6 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { format, isSameDay, parseISO, startOfWeek, endOfWeek } from 'date-fns';
 import {
   Menu, X, ChevronDown, LogOut, Settings,
@@ -17,6 +19,9 @@ import {
 } from 'lucide-react';
 
 import MessageThread from '../components/MessageThread';
+import AnnouncementManager from '../components/AnnouncementManager';
+import ProfileEditModal from '../components/ProfileEditModal';
+
 
 const API_BASE_URL = 'http://localhost:5000/api';
 
@@ -279,6 +284,11 @@ const CourseManagement = ({ onBack }) => {
   const [selectedTutor, setSelectedTutor] = useState(null);
   const [newCourse, setNewCourse] = useState({ title: '', subject: '', description: '', price: 0, thumbnail: '' });
   const subjectsList = ['Programming', 'Web Development', 'Database', 'Networking', 'Mathematics', 'Physics', 'Chemistry', 'Biology', 'English', 'Economics'];
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingCourse, setEditingCourse] = useState(null);
+  const [editFormData, setEditFormData] = useState({ title: '', subject: '', description: '', price: 0, thumbnail: '' });
+  const [editFormError, setEditFormError] = useState('');
+  const [editFormLoading, setEditFormLoading] = useState(false);
 
   const fetchCourses = async () => {
     setLoading(true);
@@ -331,6 +341,83 @@ const CourseManagement = ({ onBack }) => {
     return matchSearch && matchSubject;
   });
 
+  const handleEditCourse = (course) => {
+  setEditingCourse(course);
+  setEditFormData({
+    title: course.title,
+    subject: course.subject,
+    description: course.description,
+    price: course.price,
+    thumbnail: course.thumbnail || ''
+  });
+  setShowEditModal(true);
+};
+
+const handleUpdateCourse = async (e) => {
+  e.preventDefault();
+  setEditFormError('');
+  
+  if (!editFormData.title.trim()) {
+    setEditFormError('Title is required');
+    return;
+  }
+  if (!editFormData.subject) {
+    setEditFormError('Subject is required');
+    return;
+  }
+  if (!editFormData.description.trim()) {
+    setEditFormError('Description is required');
+    return;
+  }
+  
+  setEditFormLoading(true);
+  const token = getToken();
+  try {
+    const res = await fetch(`${API_BASE_URL}/admin/courses/${editingCourse._id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify(editFormData)
+    });
+      const data = await res.json();
+      if (data.success) {
+        setShowEditModal(false);
+        fetchCourses(); // refresh the list
+        setEditingCourse(null);
+      } else {
+        setEditFormError(data.message || 'Failed to update course');
+      }
+    } catch (error) {
+      setEditFormError('Network error. Please try again.');
+    } finally {
+      setEditFormLoading(false);
+    }
+  };
+
+  const handleDeleteCourse = async (courseId) => {
+    if (!window.confirm('Are you sure you want to permanently delete this course? This will also delete all lessons and resources associated with it. This action cannot be undone.')) {
+      return;
+    }
+    const token = getToken();
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/courses/${courseId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchCourses(); // refresh the list
+      } else {
+        alert(data.message || 'Failed to delete course');
+      }
+    } catch (error) {
+      console.error('Error deleting course:', error);
+      alert('Network error. Please try again.');
+    }
+  };
+
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-7xl mx-auto space-y-8">
       <div className="flex justify-between items-center">
@@ -369,7 +456,22 @@ const CourseManagement = ({ onBack }) => {
                     <td className="px-6 py-4">{course.enrolledCount || 0}</td>
                     <td className="px-6 py-4">{course.price === 0 ? 'Free' : `LKR ${course.price}`}</td>
                     <td className="px-6 py-4 text-sm">{new Date(course.createdAt).toLocaleDateString()}</td>
-                    <td className="px-6 py-4 text-right"><div className="flex justify-end gap-1"><button className="p-2 text-slate-400 hover:bg-slate-100 rounded-lg"><Edit3 className="h-4 w-4" /></button><button className="p-2 text-rose-400 hover:bg-rose-50 rounded-lg"><Trash2 className="h-4 w-4" /></button></div></td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex justify-end gap-1">
+                        <button 
+                          onClick={() => handleEditCourse(course)}
+                          className="p-2 text-slate-400 hover:bg-slate-100 rounded-lg"
+                        >
+                          <Edit3 className="h-5 w-5" />
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteCourse(course._id)}
+                          className="p-2 text-rose-400 hover:bg-rose-50 rounded-lg"
+                        >
+                          <Trash2 className="h-5 w-5" />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -378,42 +480,332 @@ const CourseManagement = ({ onBack }) => {
         </div>
       )}
       {/* Create Course Modal */}
-      <AnimatePresence>{showCreateModal && (<motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4" onClick={() => setShowCreateModal(false)}><motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }} onClick={e => e.stopPropagation()} className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"><div className="sticky top-0 bg-white border-b p-6 flex justify-between"><h2 className="text-2xl font-bold">Create Course</h2><button onClick={() => { setShowCreateModal(false); setStep(1); setSelectedTutor(null); }} className="p-2 hover:bg-slate-100 rounded-xl"><X className="h-5 w-5" /></button></div><div className="p-6">
-        {step === 1 && (<div className="space-y-4"><p className="text-sm text-slate-600">Select a tutor for this course.</p><div className="space-y-2 max-h-[400px] overflow-y-auto">{tutors.map(t => (<button key={t._id} onClick={() => { setSelectedTutor(t); setStep(2); }} className="w-full p-4 rounded-2xl border-2 hover:border-indigo-500 text-left flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">{t.name?.split(' ').map(n=>n[0]).join('').toUpperCase().slice(0,2)}</div><div><p className="font-bold">{t.name}</p><p className="text-xs text-slate-500">{t.email}</p></div></button>))}</div></div>)}
-        {step === 2 && (<form onSubmit={handleCreateCourse} className="space-y-4"><div className="bg-slate-50 p-3 rounded-xl flex items-center gap-3"><div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center"><User className="h-5 w-5 text-indigo-600" /></div><div><p className="text-xs text-slate-500">Selected Tutor</p><p className="font-bold">{selectedTutor?.name}</p></div><button type="button" onClick={() => setStep(1)} className="ml-auto text-indigo-600 text-sm">Change</button></div><div><label className="text-xs font-bold uppercase">Course Title *</label><input type="text" value={newCourse.title} onChange={e => setNewCourse({...newCourse, title: e.target.value})} className="w-full px-4 py-3 bg-slate-50 rounded-xl" /></div><div><label className="text-xs font-bold uppercase">Subject *</label><select value={newCourse.subject} onChange={e => setNewCourse({...newCourse, subject: e.target.value})} className="w-full px-4 py-3 bg-slate-50 rounded-xl"><option value="">Select subject</option>{subjectsList.map(s => <option key={s} value={s}>{s}</option>)}</select></div><div><label className="text-xs font-bold uppercase">Description *</label><textarea rows={3} value={newCourse.description} onChange={e => setNewCourse({...newCourse, description: e.target.value})} className="w-full px-4 py-3 bg-slate-50 rounded-xl" /></div><div><label className="text-xs font-bold uppercase">Price (LKR)</label><input type="number" value={newCourse.price} onChange={e => setNewCourse({...newCourse, price: parseInt(e.target.value) || 0})} className="w-full px-4 py-3 bg-slate-50 rounded-xl" /></div><div><label className="text-xs font-bold uppercase">Thumbnail URL</label><input type="url" value={newCourse.thumbnail} onChange={e => setNewCourse({...newCourse, thumbnail: e.target.value})} className="w-full px-4 py-3 bg-slate-50 rounded-xl" /></div>{formError && <div className="bg-rose-50 p-3 rounded-xl text-rose-600 text-sm">{formError}</div>}<div className="flex gap-3 pt-4"><button type="button" onClick={() => setShowCreateModal(false)} className="flex-1 py-3 bg-white border-2 rounded-xl font-bold">Cancel</button><button type="submit" disabled={formLoading} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold flex items-center justify-center gap-2">{formLoading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <Save className="h-4 w-4" />}{formLoading ? 'Creating...' : 'Create Course'}</button></div></form>)}
-      </div></motion.div></motion.div>)}</AnimatePresence>
+      <AnimatePresence>
+        {showCreateModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4"
+            onClick={() => setShowCreateModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.95 }}
+              onClick={e => e.stopPropagation()}
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+            >
+              <div className="sticky top-0 bg-white border-b p-6 flex justify-between">
+                <h2 className="text-2xl font-bold">Create Course</h2>
+                <button
+                  onClick={() => {
+                    setShowCreateModal(false);
+                    setStep(1);
+                    setSelectedTutor(null);
+                  }}
+                  className="p-2 hover:bg-slate-100 rounded-xl"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="p-6">
+                {step === 1 && (
+                  <div className="space-y-4">
+                    <p className="text-sm text-slate-600">Select a tutor for this course.</p>
+                    <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                      {tutors.map(t => (
+                        <button
+                          key={t._id}
+                          onClick={() => {
+                            setSelectedTutor(t);
+                            setStep(2);
+                          }}
+                          className="w-full p-4 rounded-2xl border-2 hover:border-indigo-500 text-left flex items-center gap-3"
+                        >
+                          <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">
+                            {t.name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                          </div>
+                          <div>
+                            <p className="font-bold">{t.name}</p>
+                            <p className="text-xs text-slate-500">{t.email}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {step === 2 && (
+                  <form onSubmit={handleCreateCourse} className="space-y-4">
+                    <div className="bg-slate-50 p-3 rounded-xl flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center">
+                        <User className="h-5 w-5 text-indigo-600" />
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500">Selected Tutor</p>
+                        <p className="font-bold">{selectedTutor?.name}</p>
+                      </div>
+                      <button type="button" onClick={() => setStep(1)} className="ml-auto text-indigo-600 text-sm">
+                        Change
+                      </button>
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold uppercase">Course Title *</label>
+                      <input
+                        type="text"
+                        value={newCourse.title}
+                        onChange={e => setNewCourse({ ...newCourse, title: e.target.value })}
+                        className="w-full px-4 py-3 bg-slate-50 rounded-xl"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold uppercase">Subject *</label>
+                      <select
+                        value={newCourse.subject}
+                        onChange={e => setNewCourse({ ...newCourse, subject: e.target.value })}
+                        className="w-full px-4 py-3 bg-slate-50 rounded-xl"
+                      >
+                        <option value="">Select subject</option>
+                        {subjectsList.map(s => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold uppercase">Description *</label>
+                      <textarea
+                        rows={3}
+                        value={newCourse.description}
+                        onChange={e => setNewCourse({ ...newCourse, description: e.target.value })}
+                        className="w-full px-4 py-3 bg-slate-50 rounded-xl"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold uppercase">Price (LKR)</label>
+                      <input
+                        type="number"
+                        value={newCourse.price}
+                        onChange={e => setNewCourse({ ...newCourse, price: parseInt(e.target.value) || 0 })}
+                        className="w-full px-4 py-3 bg-slate-50 rounded-xl"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold uppercase">Thumbnail URL</label>
+                      <input
+                        type="url"
+                        value={newCourse.thumbnail}
+                        onChange={e => setNewCourse({ ...newCourse, thumbnail: e.target.value })}
+                        className="w-full px-4 py-3 bg-slate-50 rounded-xl"
+                      />
+                    </div>
+                    {formError && <div className="bg-rose-50 p-3 rounded-xl text-rose-600 text-sm">{formError}</div>}
+                    <div className="flex gap-3 pt-4">
+                      <button
+                        type="button"
+                        onClick={() => setShowCreateModal(false)}
+                        className="flex-1 py-3 bg-white border-2 rounded-xl font-bold"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={formLoading}
+                        className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold flex items-center justify-center gap-2"
+                      >
+                        {formLoading ? (
+                          <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        ) : (
+                          <Save className="h-4 w-4" />
+                        )}
+                        {formLoading ? 'Creating...' : 'Create Course'}
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Edit Course Modal */}
+      <AnimatePresence>
+        {showEditModal && editingCourse && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4"
+            onClick={() => setShowEditModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.95 }}
+              onClick={e => e.stopPropagation()}
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+            >
+              <div className="sticky top-0 bg-white border-b p-6 flex justify-between">
+                <h2 className="text-2xl font-bold">Edit Course</h2>
+                <button onClick={() => setShowEditModal(false)} className="p-2 hover:bg-slate-100 rounded-xl">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <form onSubmit={handleUpdateCourse} className="p-6 space-y-5">
+                {editFormError && (
+                  <div className="bg-rose-50 p-3 rounded-xl text-rose-600 text-sm">{editFormError}</div>
+                )}
+                <div>
+                  <label className="text-xs font-bold uppercase">Course Title *</label>
+                  <input
+                    type="text"
+                    value={editFormData.title}
+                    onChange={e => setEditFormData({ ...editFormData, title: e.target.value })}
+                    className="w-full px-4 py-3 bg-slate-50 rounded-xl"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold uppercase">Subject *</label>
+                  <select
+                    value={editFormData.subject}
+                    onChange={e => setEditFormData({ ...editFormData, subject: e.target.value })}
+                    className="w-full px-4 py-3 bg-slate-50 rounded-xl"
+                  >
+                    <option value="">Select subject</option>
+                    {subjectsList.map(s => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-bold uppercase">Description *</label>
+                  <textarea
+                    rows={3}
+                    value={editFormData.description}
+                    onChange={e => setEditFormData({ ...editFormData, description: e.target.value })}
+                    className="w-full px-4 py-3 bg-slate-50 rounded-xl"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold uppercase">Price (LKR)</label>
+                  <input
+                    type="number"
+                    value={editFormData.price}
+                    onChange={e => setEditFormData({ ...editFormData, price: parseInt(e.target.value) || 0 })}
+                    className="w-full px-4 py-3 bg-slate-50 rounded-xl"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold uppercase">Thumbnail URL</label>
+                  <input
+                    type="url"
+                    value={editFormData.thumbnail}
+                    onChange={e => setEditFormData({ ...editFormData, thumbnail: e.target.value })}
+                    className="w-full px-4 py-3 bg-slate-50 rounded-xl"
+                  />
+                </div>
+                <div className="flex gap-3 pt-4">
+                  <button type="button" onClick={() => setShowEditModal(false)} className="flex-1 py-3 bg-white border-2 rounded-xl font-bold">
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={editFormLoading}
+                    className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold flex items-center justify-center gap-2"
+                  >
+                    {editFormLoading ? (
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    ) : (
+                      <Save className="h-4 w-4" />
+                    )}
+                    {editFormLoading ? 'Saving...' : 'Save Changes'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 };
 
-// ─── Admin-Tutor Messaging Component (real API) ──────────────────────────
+
+// ─── Admin Messaging Component (supports tutors, students, and admins) ────
+// ─── Admin Messaging Component (supports tutors, students, and admins) ────
 const AdminMessages = ({ onBack }) => {
   const [conversations, setConversations] = useState([]);
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [tutors, setTutors] = useState([]);
   const [showNewChat, setShowNewChat] = useState(false);
+  const [chatRole, setChatRole] = useState('tutor');
+  const [chatSearch, setChatSearch] = useState('');
+  const [usersList, setUsersList] = useState([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
   const [sending, setSending] = useState(false);
   const [newMessage, setNewMessage] = useState('');
 
+  // Fetch conversations and preserve selected conversation (even if not yet in backend)
   const fetchConversations = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/admin/messages/conversations`, { headers: { Authorization: `Bearer ${getToken()}` } });
+      const res = await fetch(`${API_BASE_URL}/admin/messages/conversations`, {
+        headers: { Authorization: `Bearer ${getToken()}` }
+      });
       const data = await res.json();
-      if (data.success) setConversations(data.data);
-    } catch (error) { console.error(error); }
+      if (data.success) {
+        const backendConvs = data.data;
+        // Merge temporary conversations that are not yet in backend
+        const allConvs = [...backendConvs];
+        // Add any temporary conversation (id starts with 'temp-') that is not already in backend
+        conversations.forEach(conv => {
+          if (conv.id.startsWith('temp-') && !backendConvs.find(bc => bc.otherUser._id === conv.otherUser._id)) {
+            allConvs.push(conv);
+          }
+        });
+        setConversations(allConvs);
+        // If we have a selected conversation, find it (or keep the existing one)
+        if (selectedConversation) {
+          const updated = allConvs.find(c => c.otherUser._id === selectedConversation.otherUser._id);
+          if (updated) setSelectedConversation(updated);
+        }
+      }
+    } catch (error) {
+      console.error(error);
+    }
     setLoading(false);
   };
-  const fetchTutors = async () => {
+
+  const fetchUsersByRole = async (role, search = '') => {
+    setLoadingUsers(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/admin/tutors`, { headers: { Authorization: `Bearer ${getToken()}` } });
+      let url = `${API_BASE_URL}/admin/users?role=${role}&limit=50`;
+      if (search) url += `&search=${encodeURIComponent(search)}`;
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${getToken()}` } });
       const data = await res.json();
-      if (data.success) setTutors(data.data);
-    } catch (error) { console.error(error); }
+      if (data.success) setUsersList(data.data);
+      else setUsersList([]);
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      setUsersList([]);
+    } finally {
+      setLoadingUsers(false);
+    }
   };
-  useEffect(() => { fetchConversations(); fetchTutors(); }, []);
+
+  useEffect(() => {
+    fetchConversations();
+  }, []);
+
+  useEffect(() => {
+    if (showNewChat) fetchUsersByRole(chatRole, chatSearch);
+  }, [showNewChat, chatRole, chatSearch]);
 
   const handleSelectConversation = (conv) => setSelectedConversation(conv);
+
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedConversation) return;
     setSending(true);
@@ -421,53 +813,226 @@ const AdminMessages = ({ onBack }) => {
       const res = await fetch(`${API_BASE_URL}/admin/messages/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
-        body: JSON.stringify({ receiverId: selectedConversation.otherUser._id, content: newMessage, courseId: selectedConversation.course?._id || null })
+        body: JSON.stringify({
+          receiverId: selectedConversation.otherUser._id,
+          content: newMessage,
+          courseId: selectedConversation.course?._id || null
+        })
       });
       const data = await res.json();
       if (data.success) {
         setNewMessage('');
-        fetchConversations(); // refresh
+        await fetchConversations(); // Refresh after sending
       }
-    } catch (error) { console.error(error); }
+    } catch (error) {
+      console.error(error);
+    }
     setSending(false);
   };
-  const handleStartNewChat = () => setShowNewChat(true);
-  const handleSelectTutorForChat = async (tutor) => {
+
+  const handleStartNewChat = () => {
+    setChatRole('tutor');
+    setChatSearch('');
+    setUsersList([]);
+    setShowNewChat(true);
+  };
+
+  const handleSelectUserForChat = (user) => {
     // Check if conversation already exists
-    const existing = conversations.find(c => c.otherUser._id === tutor._id);
+    let existing = conversations.find(c => c.otherUser._id === user._id);
     if (existing) {
       setSelectedConversation(existing);
-      setShowNewChat(false);
     } else {
-      // Optionally create a new conversation via API
-      setSelectedConversation({ id: `temp-${tutor._id}`, otherUser: tutor, messages: [], lastMessage: null });
-      setShowNewChat(false);
+      // Create a permanent temporary conversation (id starts with 'temp-')
+      const tempConv = {
+        id: `temp-${user._id}`,
+        otherUser: user,
+        course: null,
+        messages: [],
+        lastMessage: null,
+        unreadCount: 0
+      };
+      setConversations(prev => [tempConv, ...prev]);
+      setSelectedConversation(tempConv);
+    }
+    setShowNewChat(false);
+  };
+
+  const getRoleBadgeColor = (role) => {
+    switch (role) {
+      case 'admin': return 'bg-rose-100 text-rose-700';
+      case 'tutor': return 'bg-indigo-100 text-indigo-700';
+      default: return 'bg-emerald-100 text-emerald-700';
     }
   };
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-7xl mx-auto space-y-6">
-      <div className="flex items-center gap-4"><button onClick={onBack} className="p-2 hover:bg-white border rounded-xl"><ChevronLeft className="h-5 w-5" /></button><div><h1 className="text-2xl font-bold">Admin - Tutor Messaging</h1><p className="text-slate-500">Communicate with tutors</p></div></div>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[70vh]">
-        <div className="bg-white rounded-3xl border shadow-sm flex flex-col overflow-hidden">
-          <div className="p-4 border-b flex justify-between items-center"><h3 className="font-bold">Conversations</h3><button onClick={handleStartNewChat} className="p-2 bg-indigo-50 text-indigo-600 rounded-lg"><Plus className="h-4 w-4" /></button></div>
-          <div className="flex-1 overflow-y-auto divide-y">
-            {loading ? (<div className="p-4 text-center">Loading...</div>) : conversations.length === 0 ? (<div className="p-8 text-center text-slate-400">No conversations yet</div>) : (conversations.map(conv => (<button key={conv.id} onClick={() => handleSelectConversation(conv)} className={`w-full p-4 text-left hover:bg-slate-50 transition-all ${selectedConversation?.id === conv.id ? 'bg-indigo-50 border-r-4 border-indigo-600' : ''}`}><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">{conv.otherUser.name?.split(' ').map(n=>n[0]).join('').toUpperCase().slice(0,2)}</div><div className="flex-1 min-w-0"><div className="flex justify-between"><p className="font-bold truncate">{conv.otherUser.name}</p><span className="text-[10px] text-slate-400">{conv.lastMessage ? new Date(conv.lastMessage.createdAt).toLocaleTimeString() : ''}</span></div><p className="text-xs text-slate-500 truncate">{conv.lastMessage?.content || 'No messages'}</p></div>{conv.unread > 0 && <span className="w-2 h-2 bg-indigo-600 rounded-full"></span>}</div></button>)))}
-          </div>
+      <div className="flex items-center gap-4">
+        <button onClick={onBack} className="p-2 hover:bg-white border rounded-xl">
+          <ChevronLeft className="h-5 w-5" />
+        </button>
+        <div>
+          <h1 className="text-2xl font-bold">Admin Messaging</h1>
+          <p className="text-slate-500">Communicate with tutors, students, and other admins</p>
         </div>
-          <div className="lg:col-span-2 bg-white rounded-3xl border shadow-sm flex flex-col overflow-hidden">
-            {selectedConversation ? (
-              <MessageThread conversation={selectedConversation} onMessageSent={fetchConversations} />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[70vh]">
+        {/* Conversations list */}
+        <div className="bg-white rounded-3xl border shadow-sm flex flex-col overflow-hidden">
+          <div className="p-4 border-b flex justify-between items-center">
+            <h3 className="font-bold">Conversations</h3>
+            <button onClick={handleStartNewChat} className="p-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors">
+              <Plus className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto divide-y">
+            {loading ? (
+              <div className="p-4 text-center">Loading...</div>
+            ) : conversations.length === 0 ? (
+              <div className="p-8 text-center text-slate-400">No conversations yet</div>
             ) : (
-              <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
-                <MessageSquare size={48} className="mb-4 opacity-20" />
-                <p>Select a conversation or start a new chat</p>
-              </div>
+              conversations.map((conv) => (
+                <button
+                  key={conv.id}
+                  onClick={() => handleSelectConversation(conv)}
+                  className={`w-full p-4 text-left hover:bg-slate-50 transition-all ${
+                    selectedConversation?.id === conv.id ? 'bg-indigo-50 border-r-4 border-indigo-600' : ''
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">
+                      {conv.otherUser.name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between">
+                        <p className="font-bold truncate">{conv.otherUser.name}</p>
+                        <span className="text-[10px] text-slate-400">
+                          {conv.lastMessage ? new Date(conv.lastMessage.createdAt).toLocaleTimeString() : ''}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${getRoleBadgeColor(conv.otherUser.role)}`}>
+                          {conv.otherUser.role}
+                        </span>
+                        <p className="text-xs text-slate-500 truncate">
+                          {conv.lastMessage?.content || 'No messages'}
+                        </p>
+                      </div>
+                    </div>
+                    {conv.unread > 0 && <span className="w-2 h-2 bg-indigo-600 rounded-full"></span>}
+                  </div>
+                </button>
+              ))
             )}
           </div>
+        </div>
+
+        {/* Message thread */}
+        <div className="lg:col-span-2 bg-white rounded-3xl border shadow-sm flex flex-col overflow-hidden">
+          {selectedConversation ? (
+            <MessageThread conversation={selectedConversation} onMessageSent={fetchConversations} />
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
+              <MessageSquare size={48} className="mb-4 opacity-20" />
+              <p>Select a conversation or start a new chat</p>
+            </div>
+          )}
+        </div>
       </div>
+
       {/* New Chat Modal */}
-      <AnimatePresence>{showNewChat && (<motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowNewChat(false)}><motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }} onClick={e => e.stopPropagation()} className="bg-white rounded-3xl w-full max-w-md p-6"><h3 className="text-xl font-bold mb-4">Start New Chat</h3><div className="space-y-2 max-h-96 overflow-y-auto">{tutors.map(t => (<button key={t._id} onClick={() => handleSelectTutorForChat(t)} className="w-full p-3 rounded-2xl border hover:border-indigo-500 text-left flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center font-bold">{t.name?.split(' ').map(n=>n[0]).join('').toUpperCase().slice(0,2)}</div><div><p className="font-bold">{t.name}</p><p className="text-xs text-slate-500">{t.email}</p></div></button>))}</div><div className="mt-4 flex justify-end"><button onClick={() => setShowNewChat(false)} className="px-4 py-2 bg-slate-100 rounded-lg">Cancel</button></div></motion.div></motion.div>)}</AnimatePresence>
+      <AnimatePresence>
+        {showNewChat && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm"
+            onClick={() => setShowNewChat(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.95 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-3xl w-full max-w-md p-6"
+            >
+              <h3 className="text-xl font-bold mb-4">Start New Chat</h3>
+
+              {/* Role selector */}
+              <div className="mb-4">
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-widest mb-2">Select user type</label>
+                <div className="flex gap-2">
+                  {['admin', 'student', 'tutor'].map((role) => (
+                    <button
+                      key={role}
+                      onClick={() => setChatRole(role)}
+                      className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+                        chatRole === role ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      {role.charAt(0).toUpperCase() + role.slice(1)}s
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Search input */}
+              <div className="mb-4">
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-widest mb-2">Search</label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search by name or email..."
+                    value={chatSearch}
+                    onChange={(e) => setChatSearch(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:border-indigo-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Users list */}
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {loadingUsers ? (
+                  <div className="flex justify-center py-8">
+                    <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                  </div>
+                ) : usersList.length === 0 ? (
+                  <div className="text-center py-8 text-slate-500">No users found</div>
+                ) : (
+                  usersList.map((user) => (
+                    <button
+                      key={user._id}
+                      onClick={() => handleSelectUserForChat(user)}
+                      className="w-full p-3 rounded-2xl border border-slate-200 hover:border-indigo-500 hover:bg-indigo-50 transition-all text-left flex items-center gap-3"
+                    >
+                      <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold">
+                        {user.name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-bold text-slate-900">{user.name}</p>
+                        <p className="text-xs text-slate-500">{user.email}</p>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${getRoleBadgeColor(user.role)}`}>
+                          {user.role}
+                        </span>
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+
+              <div className="mt-4 flex justify-end">
+                <button onClick={() => setShowNewChat(false)} className="px-4 py-2 bg-slate-100 rounded-lg text-slate-700 hover:bg-slate-200">
+                  Cancel
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 };
@@ -793,6 +1358,9 @@ const ResourceManagement = ({ onBack }) => {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // SCHEDULE MANAGEMENT VIEW (extracted)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// SCHEDULE MANAGEMENT VIEW (extracted)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 const ScheduleManagementView = ({
   selectedDate,
   setSelectedDate,
@@ -804,27 +1372,74 @@ const ScheduleManagementView = ({
   filterCourse,
   setFilterCourse,
   setShowScheduleModal,
-  tileContent,
   formatTime,
-  setActiveView
+  setActiveView,
+  onEditLesson,
+  onDeleteLesson
 }) => {
-  // Compute filtered lessons for the selected date
-  const filteredLessons = allLessons.filter(lesson => isSameDay(parseISO(lesson.date), selectedDate));
+  // Helper: filter lessons by tutor and course (no date filter)
+  const filterByTutorAndCourse = (lessons) => {
+    return lessons.filter(lesson => {
+      const matchTutor = filterTutor === 'all' || lesson.tutorId === filterTutor;
+      const matchCourse = filterCourse === 'all' || lesson.courseId === filterCourse;
+      return matchTutor && matchCourse;
+    });
+  };
+
+  const filteredByTutorCourse = filterByTutorAndCourse(allLessons);
+
+  // Lessons for the selected date (calendar right panel)
+  const filteredLessons = filteredByTutorCourse.filter(lesson =>
+    isSameDay(parseISO(lesson.date), selectedDate)
+  );
+
+  // All lessons matching filters, sorted for list view
+  const listFilteredLessons = [...filteredByTutorCourse].sort(
+    (a, b) => new Date(a.date) - new Date(b.date)
+  );
+
+  // Custom tile content – shows dot only if a filtered lesson exists on that date
+  const tileContent = ({ date, view }) => {
+    if (view === 'month') {
+      const hasLesson = filteredByTutorCourse.some(lesson =>
+        isSameDay(parseISO(lesson.date), date)
+      );
+      if (hasLesson) {
+        return <div className="w-1.5 h-1.5 bg-indigo-600 rounded-full mx-auto mt-1"></div>;
+      }
+    }
+    return null;
+  };
   
-  const uniqueTutors = [...new Map(allLessons.map(l => [l.tutorId, { id: l.tutorId, name: l.tutorName }])).values()];
-  const uniqueCourses = [...new Map(allLessons.map(l => [l.courseId, { id: l.courseId, title: l.courseTitle }])).values()];
-  
+  const getStatusBadge = (date) => {
+    const lessonDate = new Date(date);
+    const now = new Date();
+    if (lessonDate < now) {
+      return <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-[10px] font-bold rounded-full">Past</span>;
+    }
+    return <span className="px-2 py-0.5 bg-emerald-100 text-emerald-600 text-[10px] font-bold rounded-full">Upcoming</span>;
+  };
+
+  const uniqueTutors = [
+    ...new Map(allLessons.map(l => [l.tutorId, { id: l.tutorId, name: l.tutorName }])).values(),
+  ];
+  const uniqueCourses = [
+    ...new Map(allLessons.map(l => [l.courseId, { id: l.courseId, title: l.courseTitle }])).values(),
+  ];
+
   return (
-    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-7xl mx-auto space-y-8">
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="max-w-7xl mx-auto space-y-8"
+    >
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          {/* The back button now expects a prop; but in this view we don't have a direct "onBack" – 
-              we'll let the parent handle navigation via setActiveView. 
-              We'll keep the button as is, but it calls setActiveView('dashboard') – 
-              that function must be passed or handled by parent. 
-              Since the parent (AdminDashboard) still has setActiveView, we can pass it as prop. 
-              I'll add setActiveView to the props list. */}
-          <button onClick={() => setActiveView('dashboard')} className="p-2 hover:bg-white border rounded-xl">
+          <button
+            onClick={() => setActiveView('dashboard')}
+            className="p-2 hover:bg-white border rounded-xl"
+          >
             <ChevronLeft className="h-5 w-5" />
           </button>
           <div>
@@ -833,31 +1448,105 @@ const ScheduleManagementView = ({
           </div>
         </div>
         <div className="flex gap-3">
-          <button onClick={() => setScheduleView('calendar')} className={`px-4 py-2 rounded-xl text-sm font-bold ${scheduleView === 'calendar' ? 'bg-indigo-600 text-white' : 'bg-white border'}`}>Calendar</button>
-          <button onClick={() => setScheduleView('list')} className={`px-4 py-2 rounded-xl text-sm font-bold ${scheduleView === 'list' ? 'bg-indigo-600 text-white' : 'bg-white border'}`}>List View</button>
-          <button onClick={() => setShowScheduleModal(true)} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold shadow-md"><Plus className="h-4 w-4" />New Lesson</button>
+          <button
+            onClick={() => setScheduleView('calendar')}
+            className={`px-4 py-2 rounded-xl text-sm font-bold ${
+              scheduleView === 'calendar'
+                ? 'bg-indigo-600 text-white shadow-md'
+                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            Calendar
+          </button>
+          <button
+            onClick={() => setScheduleView('list')}
+            className={`px-4 py-2 rounded-xl text-sm font-bold ${
+              scheduleView === 'list'
+                ? 'bg-indigo-600 text-white shadow-md'
+                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            List View
+          </button>
+          <button
+            onClick={() => setShowScheduleModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold shadow-md"
+          >
+            <Plus className="h-4 w-4" />
+            New Lesson
+          </button>
         </div>
       </div>
 
-      {/* Stats */}
+      {/* Stats – overall (unfiltered) */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white p-5 rounded-3xl border"><p className="text-xs font-bold text-slate-400">Total Lessons</p><p className="text-2xl font-bold">{allLessons.length}</p></div>
-        <div className="bg-white p-5 rounded-3xl border"><p className="text-xs font-bold text-slate-400">This Week</p><p className="text-2xl font-bold text-indigo-600">{allLessons.filter(l => { const d = new Date(l.date); const ws = startOfWeek(new Date()); const we = endOfWeek(new Date()); return d >= ws && d <= we; }).length}</p></div>
-        <div className="bg-white p-5 rounded-3xl border"><p className="text-xs font-bold text-slate-400">Upcoming</p><p className="text-2xl font-bold text-emerald-600">{allLessons.filter(l => new Date(l.date) > new Date()).length}</p></div>
-        <div className="bg-white p-5 rounded-3xl border"><p className="text-xs font-bold text-slate-400">Total Students</p><p className="text-2xl font-bold text-blue-600">{allLessons.reduce((s,l) => s + (l.enrolledCount||0), 0)}</p></div>
+        <div className="bg-white p-5 rounded-3xl border">
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">
+            Total Lessons
+          </p>
+          <p className="text-2xl font-bold text-slate-900">{allLessons.length}</p>
+        </div>
+        <div className="bg-white p-5 rounded-3xl border">
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">
+            This Week
+          </p>
+          <p className="text-2xl font-bold text-indigo-600">
+            {allLessons.filter(l => {
+              const d = new Date(l.date);
+              const ws = startOfWeek(new Date());
+              const we = endOfWeek(new Date());
+              return d >= ws && d <= we;
+            }).length}
+          </p>
+        </div>
+        <div className="bg-white p-5 rounded-3xl border">
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">
+            Upcoming
+          </p>
+          <p className="text-2xl font-bold text-emerald-600">
+            {allLessons.filter(l => new Date(l.date) > new Date()).length}
+          </p>
+        </div>
+        <div className="bg-white p-5 rounded-3xl border">
+          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">
+            Total Students
+          </p>
+          <p className="text-2xl font-bold text-blue-600">
+            {allLessons.reduce((s, l) => s + (l.enrolledCount || 0), 0)}
+          </p>
+        </div>
       </div>
 
       {/* Filters */}
       <div className="bg-white p-5 rounded-3xl border">
         <div className="flex flex-col md:flex-row gap-4 items-center">
-          <div className="flex items-center gap-2"><Filter className="h-4 w-4 text-slate-400" /><span className="text-sm">Filter by:</span></div>
-          <select value={filterTutor} onChange={e => setFilterTutor(e.target.value)} className="px-4 py-2 bg-slate-50 rounded-xl">
+          <div className="flex items-center gap-2">
+            <Filter className="h-4 w-4 text-slate-400" />
+            <span className="text-sm font-medium text-slate-600">Filter by:</span>
+          </div>
+          <select
+            value={filterTutor}
+            onChange={e => setFilterTutor(e.target.value)}
+            className="px-4 py-2 bg-slate-50 border-2 border-transparent focus:border-indigo-500 rounded-xl focus:outline-none transition-all text-sm font-medium text-slate-700"
+          >
             <option value="all">All Tutors</option>
-            {uniqueTutors.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            {uniqueTutors.map(t => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
           </select>
-          <select value={filterCourse} onChange={e => setFilterCourse(e.target.value)} className="px-4 py-2 bg-slate-50 rounded-xl">
+          <select
+            value={filterCourse}
+            onChange={e => setFilterCourse(e.target.value)}
+            className="px-4 py-2 bg-slate-50 border-2 border-transparent focus:border-indigo-500 rounded-xl focus:outline-none transition-all text-sm font-medium text-slate-700"
+          >
             <option value="all">All Courses</option>
-            {uniqueCourses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+            {uniqueCourses.map(c => (
+              <option key={c.id} value={c.id}>
+                {c.title}
+              </option>
+            ))}
           </select>
         </div>
       </div>
@@ -866,27 +1555,85 @@ const ScheduleManagementView = ({
       {scheduleView === 'calendar' ? (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 bg-white rounded-3xl border p-6">
-            <Calendar onChange={setSelectedDate} value={selectedDate} tileContent={tileContent} className="w-full border-none" />
+            <Calendar
+              onChange={setSelectedDate}
+              value={selectedDate}
+              tileContent={tileContent}
+              className="w-full border-none"
+            />
           </div>
           <div className="bg-white rounded-3xl border overflow-hidden">
             <div className="p-6 border-b bg-slate-50">
-              <div className="flex items-center gap-2"><CalendarIcon className="h-5 w-5 text-indigo-600" /><h3 className="font-bold">{format(selectedDate, 'EEEE, MMMM d, yyyy')}</h3></div>
+              <div className="flex items-center gap-2">
+                <CalendarIcon className="h-5 w-5 text-indigo-600" />
+                <h3 className="font-bold text-slate-900">
+                  {format(selectedDate, 'EEEE, MMMM d, yyyy')}
+                </h3>
+              </div>
             </div>
             <div className="p-6 space-y-4 max-h-[500px] overflow-y-auto">
-              {filteredLessons.length > 0 ? filteredLessons.map(l => (
-                <div key={l._id} className="p-4 bg-slate-50 rounded-2xl border">
-                  <h4 className="font-bold">{l.title}</h4>
-                  <p className="text-xs text-slate-500">{l.courseTitle}</p>
-                  <div className="flex items-center gap-2 text-xs text-slate-500 mt-2">
-                    <Clock className="h-3 w-3" /><span>{formatTime(l.date)}</span><span>•</span><span>{l.duration} min</span>
+              {filteredLessons.length > 0 ? (
+                filteredLessons.map(lesson => (
+                  <div key={lesson._id} className="p-4 bg-slate-50 rounded-2xl border hover:shadow-md transition-all">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="p-2 bg-white rounded-xl text-indigo-600 shadow-sm">
+                        <Video className="h-4 w-4" />
+                      </div>
+                      {getStatusBadge(lesson.date)}
+                    </div>
+                    <h4 className="font-bold text-slate-900 mb-1">{lesson.title}</h4>
+                    <p className="text-xs text-slate-500 mb-2">{lesson.courseTitle}</p>
+                    <div className="flex items-center gap-2 text-xs text-slate-500 mb-3">
+                      <Clock className="h-3 w-3" />
+                      <span>{formatTime(lesson.date)}</span>
+                      <span>•</span>
+                      <span>{lesson.duration} min</span>
+                      <span>•</span>
+                      <Users className="h-3 w-3" />
+                      <span>{lesson.enrolledCount || 0} students</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {lesson.meetingLink && new Date(lesson.date) > new Date() && (
+                        <a
+                          href={lesson.meetingLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 hover:underline"
+                        >
+                          Start Session <ExternalLink className="h-3 w-3" />
+                        </a>
+                      )}
+                      <button
+                        onClick={() => window.location.href = `/admin/courses/${lesson.courseId}`}
+                        className="inline-flex items-center gap-1 text-xs font-bold text-slate-600 hover:text-indigo-600"
+                      >
+                        View Course
+                      </button>
+                      <button
+                        onClick={() => onEditLesson(lesson)}
+                        className="inline-flex items-center gap-1 text-xs font-bold text-amber-600 hover:text-amber-700"
+                      >
+                        <Edit3 className="h-3 w-3" /> Edit
+                      </button>
+                      <button
+                        onClick={() => onDeleteLesson(lesson._id)}
+                        className="inline-flex items-center gap-1 text-xs font-bold text-rose-600 hover:text-rose-700"
+                      >
+                        <Trash2 className="h-3 w-3" /> Delete
+                      </button>
+                    </div>
                   </div>
-                  {l.meetingLink && <a href={l.meetingLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 mt-2">Join Session <ExternalLink className="h-3 w-3" /></a>}
-                </div>
-              )) : (
+                ))
+              ) : (
                 <div className="text-center py-12">
                   <CalendarIcon className="h-12 w-12 text-slate-300 mx-auto mb-4" />
-                  <p>No lessons scheduled</p>
-                  <button onClick={() => setShowScheduleModal(true)} className="mt-4 text-indigo-600 text-sm font-bold">Schedule a lesson</button>
+                  <p>No lessons scheduled for this day</p>
+                  <button
+                    onClick={() => setShowScheduleModal(true)}
+                    className="mt-4 text-indigo-600 text-sm font-bold hover:underline"
+                  >
+                    Schedule a lesson
+                  </button>
                 </div>
               )}
             </div>
@@ -894,36 +1641,85 @@ const ScheduleManagementView = ({
         </div>
       ) : (
         <div className="bg-white rounded-3xl border overflow-hidden">
-          <div className="p-6 border-b bg-slate-50"><h2 className="text-lg font-bold">All Scheduled Lessons</h2></div>
-          <div className="divide-y">
-            {allLessons.length === 0 ? (
+          <div className="p-6 border-b bg-slate-50">
+            <h2 className="text-lg font-bold text-slate-900">All Scheduled Lessons</h2>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {listFilteredLessons.length === 0 ? (
               <div className="p-12 text-center">
                 <CalendarIcon className="h-12 w-12 text-slate-300 mx-auto mb-4" />
-                <p>No lessons scheduled yet</p>
-                <button onClick={() => setShowScheduleModal(true)} className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold">Create New Lesson</button>
+                <p>No lessons match the selected filters</p>
+                <button
+                  onClick={() => {
+                    setFilterTutor('all');
+                    setFilterCourse('all');
+                  }}
+                  className="mt-4 text-indigo-600 text-sm font-bold hover:underline"
+                >
+                  Clear filters
+                </button>
               </div>
             ) : (
-              allLessons.sort((a, b) => new Date(a.date) - new Date(b.date)).map(l => (
-                <div key={l._id} className="p-6 hover:bg-slate-50">
+              listFilteredLessons.map(lesson => (
+                <div key={lesson._id} className="p-6 hover:bg-slate-50 transition-all">
                   <div className="flex flex-col md:flex-row justify-between gap-4">
                     <div className="flex items-start gap-4">
-                      <div className="w-12 h-12 rounded-2xl bg-indigo-100 flex items-center justify-center text-indigo-600"><Video className="h-6 w-6" /></div>
+                      <div className="w-12 h-12 rounded-2xl bg-indigo-100 flex items-center justify-center text-indigo-600">
+                        <Video className="h-6 w-6" />
+                      </div>
                       <div>
-                        <h3 className="font-bold text-lg">{l.title}</h3>
-                        <p className="text-sm text-slate-500">{l.courseTitle}</p>
-                        <p className="text-sm text-slate-500">Tutor: {l.tutorName}</p>
-                        <div className="flex flex-wrap gap-3 mt-2 text-xs text-slate-500">
-                          <span className="flex items-center gap-1"><CalendarIcon className="h-3 w-3" />{new Date(l.date).toLocaleDateString()}</span>
-                          <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{formatTime(l.date)}</span>
-                          <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{l.duration} min</span>
-                          <span className="flex items-center gap-1"><Users className="h-3 w-3" />{l.enrolledCount || 0} enrolled</span>
+                        <h3 className="font-bold text-slate-900 text-lg">{lesson.title}</h3>
+                        <p className="text-sm text-slate-500">{lesson.courseTitle}</p>
+                        <p className="text-sm text-slate-500">Tutor: {lesson.tutorName}</p>
+                        <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-slate-500">
+                          <span className="flex items-center gap-1">
+                            <CalendarIcon className="h-3 w-3" />
+                            {new Date(lesson.date).toLocaleDateString()}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {formatTime(lesson.date)}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {lesson.duration} min
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Users className="h-3 w-3" />
+                            {lesson.enrolledCount || 0} enrolled
+                          </span>
                         </div>
                       </div>
                     </div>
-                    <div className="flex gap-3">
-                      {l.meetingLink && new Date(l.date) > new Date() && <a href={l.meetingLink} target="_blank" rel="noopener noreferrer" className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold">Join Session</a>}
-                      <button className="p-2 text-slate-400 hover:bg-slate-100 rounded-lg"><Edit3 className="h-5 w-5" /></button>
-                      <button className="p-2 text-rose-400 hover:bg-rose-50 rounded-lg"><Trash2 className="h-5 w-5" /></button>
+                    <div className="flex flex-wrap gap-3">
+                      {lesson.meetingLink && new Date(lesson.date) > new Date() && (
+                        <a
+                          href={lesson.meetingLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700"
+                        >
+                          Join Session
+                        </a>
+                      )}
+                      <button
+                        onClick={() => window.location.href = `/admin/courses/${lesson.courseId}`}
+                        className="px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl text-sm font-medium hover:bg-slate-50"
+                      >
+                        View Course
+                      </button>
+                      <button
+                        onClick={() => onEditLesson(lesson)}
+                        className="px-4 py-2 bg-amber-50 text-amber-700 border border-amber-200 rounded-xl text-sm font-medium hover:bg-amber-100"
+                      >
+                        <Edit3 className="h-4 w-4 inline mr-1" /> Edit
+                      </button>
+                      <button
+                        onClick={() => onDeleteLesson(lesson._id)}
+                        className="px-4 py-2 bg-rose-50 text-rose-700 border border-rose-200 rounded-xl text-sm font-medium hover:bg-rose-100"
+                      >
+                        <Trash2 className="h-4 w-4 inline mr-1" /> Delete
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -1609,6 +2405,130 @@ const UserManagement = ({ onBack }) => {
     }
   };
 
+  // ... inside UserManagement component
+  const exportToPDF = async () => {
+    const dataToExport = filteredUsers;
+    if (dataToExport.length === 0) {
+      alert('No users to export');
+      return;
+    }
+
+    // Import jsPDF and autoTable
+    const { default: jsPDF } = await import('jspdf');
+    const { default: autoTable } = await import('jspdf-autotable');
+
+    const doc = new jsPDF('landscape');
+
+    // Header: SmartKuppi
+    doc.setFontSize(24);
+    doc.setTextColor(79, 70, 229); // Indigo color
+    doc.setFont('helvetica', 'bold');
+    doc.text('SmartKuppi', 14, 20);
+
+    // Title
+    doc.setFontSize(16);
+    doc.setTextColor(30, 41, 59);
+    doc.setFont('helvetica', 'normal');
+    doc.text('User Management Report', 14, 35);
+
+    // Generation date/time (right aligned)
+    const now = new Date();
+    const dateStr = now.toLocaleString();
+    doc.setFontSize(9);
+    doc.setTextColor(100, 116, 139);
+    doc.text(`Generated: ${dateStr}`, doc.internal.pageSize.width - 14, 20, { align: 'right' });
+
+    // Filters info
+    let filterText = `Filters: Role: ${roleFilter === 'all' ? 'All' : roleFilter} | Status: ${statusFilter === 'all' ? 'All' : statusFilter}`;
+    if (searchTerm) filterText += ` | Search: "${searchTerm}"`;
+    doc.setFontSize(9);
+    doc.text(filterText, 14, 45);
+
+    // Prepare table data
+    const tableHeaders = [['Name', 'Email', 'Role', 'Status', 'Phone', 'Joined Date']];
+    const tableRows = dataToExport.map(user => [
+      user.name,
+      user.email,
+      user.role,
+      user.status,
+      user.phone || 'N/A',
+      new Date(user.createdAt).toLocaleDateString()
+    ]);
+
+    // Add table
+    autoTable(doc, {
+      head: tableHeaders,
+      body: tableRows,
+      startY: 55,
+      theme: 'striped',
+      headStyles: {
+        fillColor: [79, 70, 229],
+        textColor: 255,
+        fontSize: 10,
+        fontStyle: 'bold',
+        halign: 'center'
+      },
+      bodyStyles: {
+        fontSize: 9,
+        cellPadding: 3
+      },
+      alternateRowStyles: {
+        fillColor: [248, 250, 252]
+      },
+      margin: { left: 14, right: 14 },
+      columnStyles: {
+        0: { cellWidth: 'auto' },
+        1: { cellWidth: 'auto' },
+        2: { cellWidth: 25 },
+        3: { cellWidth: 25 },
+        4: { cellWidth: 30 },
+        5: { cellWidth: 30 }
+      }
+    });
+
+    // Add page numbers
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setTextColor(150, 150, 150);
+      doc.text(
+        `Page ${i} of ${pageCount}`,
+        doc.internal.pageSize.width / 2,
+        doc.internal.pageSize.height - 10,
+        { align: 'center' }
+      );
+    }
+
+    // Save PDF
+    doc.save(`users_${now.toISOString().slice(0,19)}.pdf`);
+  };
+
+  const exportToCSV = () => {
+    const dataToExport = filteredUsers;
+    if (dataToExport.length === 0) {
+      alert('No users to export');
+      return;
+    }
+    const headers = ['Name', 'Email', 'Role', 'Status', 'Phone', 'Joined Date'];
+    const rows = dataToExport.map(user => [
+      user.name,
+      user.email,
+      user.role,
+      user.status,
+      user.phone || 'N/A',
+      new Date(user.createdAt).toLocaleDateString()
+    ]);
+    const csvContent = [headers, ...rows].map(row => row.join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `users_${new Date().toISOString().slice(0,19)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const getRoleIcon = (role) => {
     switch (role) {
       case 'admin': return <Shield className="h-4 w-4 text-rose-500" />;
@@ -1630,7 +2550,14 @@ const UserManagement = ({ onBack }) => {
     }
   };
 
-  const filteredUsers = users;
+  const filteredUsers = users.filter(user => {
+  const matchesSearch = searchTerm === '' || 
+      user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.email?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesRole = roleFilter === 'all' || user.role === roleFilter;
+    const matchesStatus = statusFilter === 'all' || user.status === statusFilter;
+    return matchesSearch && matchesRole && matchesStatus;
+  });
 
   return (
     <>
@@ -1654,14 +2581,23 @@ const UserManagement = ({ onBack }) => {
             </div>
           </div>
           <div className="flex items-center space-x-3">
-            <button className="flex items-center space-x-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors shadow-sm">
-              <Download className="h-4 w-4" /><span>Export CSV</span>
+            <button 
+              onClick={exportToPDF}
+              className="flex items-center space-x-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors shadow-sm"
+            >
+              <Download className="h-4 w-4" /><span>Export PDF</span>
             </button>
             <button 
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20"
+              onClick={exportToCSV}
+              className="flex items-center space-x-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors shadow-sm"
             >
-            <Plus className="h-4 w-4" /><span>Add New User</span>
+              <FileText className="h-4 w-4" /><span>Export CSV</span>
+            </button>
+            <button 
+              onClick={() => setShowAddModal(true)}
+              className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20"
+            >
+              <Plus className="h-4 w-4" /><span>Add New User</span>
             </button>
           </div>
         </div>
@@ -2534,6 +3470,33 @@ const AdminDashboard = () => {
   const [filterTutor, setFilterTutor] = useState('all');
   const [filterCourse, setFilterCourse] = useState('all');
 
+  // INSERT THESE THREE BELOW:
+  const [announcements, setAnnouncements] = useState([]);
+  const [announcementsLoading, setAnnouncementsLoading] = useState(false);
+  const [announcementCourses, setAnnouncementCourses] = useState([]);
+
+  // Inside AdminDashboard component
+  const [showProfileModal, setShowProfileModal] = useState(false);
+
+  // Audit logs state
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditFilters, setAuditFilters] = useState({
+    user: '',
+    action: '',
+    startDate: '',
+    endDate: ''
+  });
+  const [auditPagination, setAuditPagination] = useState({ page: 1, limit: 50, total: 0 });
+
+  const [showAuditFilters, setShowAuditFilters] = useState(false);
+  const [localAuditFilters, setLocalAuditFilters] = useState({
+    user: '',
+    action: '',
+    startDate: '',
+    endDate: ''
+  });
+  
   // Discussions state
   const [discussions, setDiscussions] = useState([]);
   const [newDiscussion, setNewDiscussion] = useState({ title: '', content: '' });
@@ -2542,6 +3505,21 @@ const AdminDashboard = () => {
   const [replyContent, setReplyContent] = useState('');
 
   const navigate = useNavigate();
+
+  // Edit Lesson state
+  const [showEditLessonModal, setShowEditLessonModal] = useState(false);
+  const [editingLesson, setEditingLesson] = useState(null);
+  const [editLessonForm, setEditLessonForm] = useState({
+    title: '',
+    description: '',
+    date: '',
+    time: '',
+    duration: '60',
+    meetingLink: '',
+    meetingPassword: ''
+  });
+  const [editLessonErrors, setEditLessonErrors] = useState({});
+  const [editLessonSubmitting, setEditLessonSubmitting] = useState(false);
 
   // Data fetching functions (unchanged)
   const fetchDashboardData = useCallback(async () => {
@@ -2565,6 +3543,34 @@ const AdminDashboard = () => {
     setLoading(false);
   }, []);
 
+  // Paste these after fetchDashboardData
+  const fetchAnnouncements = useCallback(async () => {
+    setAnnouncementsLoading(true);
+    try {
+    const res = await fetch(`${API_BASE_URL}/announcements`, {
+      headers: { Authorization: `Bearer ${getToken()}` }
+      });
+      const data = await res.json();
+      if (data.success) setAnnouncements(data.data);
+    } catch (error) {
+      console.error('Error fetching announcements:', error);
+    } finally {
+      setAnnouncementsLoading(false);
+    }
+  }, []);
+
+  const fetchAnnouncementCourses = useCallback(async () => {
+    try {
+        const res = await fetch(`${API_BASE_URL}/admin/courses`, {
+          headers: { Authorization: `Bearer ${getToken()}` }
+        });
+        const data = await res.json();
+        if (data.success) setAnnouncementCourses(data.data);
+      } catch (error) {
+        console.error('Error fetching courses for announcements:', error);
+      }
+    }, []);
+
   const filterLessonsByDate = (lessonsData = allLessons, date = selectedDate) => {
     let filtered = lessonsData.filter(lesson => isSameDay(parseISO(lesson.date), date));
     if (filterTutor !== 'all') filtered = filtered.filter(l => l.tutorId === filterTutor);
@@ -2586,6 +3592,19 @@ const AdminDashboard = () => {
     } catch { navigate('/login'); }
   }, [navigate, fetchDashboardData]);
 
+  useEffect(() => {
+  if (activeView === 'announcements') {
+    fetchAnnouncements();
+    fetchAnnouncementCourses();
+  }
+  }, [activeView, fetchAnnouncements, fetchAnnouncementCourses]);
+
+  useEffect(() => {
+  if (activeView === 'auditLogs') {
+      fetchAuditLogs();
+    }
+  }, [activeView, auditFilters, auditPagination.page]);
+
   const handleTutorStatusChange = async (tutorId, newStatus) => {
     setActionLoading(true);
     try {
@@ -2601,6 +3620,50 @@ const AdminDashboard = () => {
       }
     } catch (error) { console.error(error); }
     setActionLoading(false);
+  };
+
+  const handleCreateAnnouncement = async (announcementData) => {
+  const res = await fetch(`${API_BASE_URL}/announcements`, {
+    method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+      body: JSON.stringify(announcementData)
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.message || 'Failed to create');
+    return data.data;
+  };
+
+  const handleUpdateAnnouncement = async (id, announcementData) => {
+    const res = await fetch(`${API_BASE_URL}/announcements/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+      body: JSON.stringify(announcementData)
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.message || 'Failed to update');
+    return data.data;
+  };
+
+  // Find and replace your handleDeleteAnnouncement with this:
+  const handleDeleteAnnouncement = async (id) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/announcements/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${getToken()}` }
+      });
+      
+      const data = await res.json();
+      
+      if (data.success) {
+        // THIS LINE IS THE KEY: It tells the dashboard to get the new list
+        fetchAnnouncements(); 
+      } else {
+        alert(data.message || 'Failed to delete');
+      }
+    } catch (error) {
+      console.error('Delete error:', error);
+      alert('Network error while deleting');
+    }
   };
 
   const handleScheduleLesson = async (lessonData) => {
@@ -2621,6 +3684,117 @@ const AdminDashboard = () => {
       } else alert(data.message || 'Failed to schedule lesson');
     } catch (error) { alert('Network error'); }
     setScheduleLoading(false);
+  };
+
+  // ========== Lesson Edit/Delete Handlers ==========
+  const openEditLessonModal = (lesson) => {
+    const lessonDate = new Date(lesson.date);
+    const formattedDate = lessonDate.toISOString().split('T')[0];
+    const formattedTime = lessonDate.toTimeString().slice(0, 5);
+    
+    setEditingLesson(lesson);
+    setEditLessonForm({
+      title: lesson.title,
+      description: lesson.description || '',
+      date: formattedDate,
+      time: formattedTime,
+      duration: lesson.duration.toString(),
+      meetingLink: lesson.meetingLink || '',
+      meetingPassword: lesson.meetingPassword || ''
+    });
+    setEditLessonErrors({});
+    setShowEditLessonModal(true);
+  };
+
+  const handleUpdateLesson = async (e) => {
+    e.preventDefault();
+    
+    const errors = {};
+    if (!editLessonForm.title.trim()) errors.title = 'Title is required';
+    if (!editLessonForm.description.trim()) errors.description = 'Description is required';
+    if (!editLessonForm.date) errors.date = 'Date is required';
+    if (!editLessonForm.time) errors.time = 'Time is required';
+    if (!editLessonForm.meetingLink) errors.meetingLink = 'Meeting link is required';
+    if (editLessonForm.meetingLink && !editLessonForm.meetingLink.startsWith('http')) {
+      errors.meetingLink = 'Must start with http:// or https://';
+    }
+    
+    if (Object.keys(errors).length > 0) {
+      setEditLessonErrors(errors);
+      return;
+    }
+    
+    setEditLessonSubmitting(true);
+    const token = getToken();
+    const dateTime = new Date(`${editLessonForm.date}T${editLessonForm.time}`);
+    
+    if (isNaN(dateTime.getTime())) {
+      setEditLessonErrors({ ...editLessonErrors, date: 'Invalid date/time' });
+      setEditLessonSubmitting(false);
+      return;
+    }
+    
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/lessons/${editingLesson._id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          title: editLessonForm.title,
+          description: editLessonForm.description,
+          date: dateTime.toISOString(),
+          duration: parseInt(editLessonForm.duration),
+          meetingLink: editLessonForm.meetingLink,
+          meetingPassword: editLessonForm.meetingPassword
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setShowEditLessonModal(false);
+        // Refresh lessons list
+        const lessonsRes = await fetch(`${API_BASE_URL}/admin/lessons`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const lessonsData = await lessonsRes.json();
+        if (lessonsData.success) setAllLessons(lessonsData.data);
+      } else {
+        alert(data.message || 'Failed to update lesson');
+      }
+    } catch (error) {
+      console.error('Error updating lesson:', error);
+      alert('Network error. Please try again.');
+    } finally {
+      setEditLessonSubmitting(false);
+    }
+  };
+
+  const handleDeleteLesson = async (lessonId) => {
+    if (!window.confirm('Are you sure you want to permanently delete this lesson? This action cannot be undone.')) {
+      return;
+    }
+    const token = getToken();
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/lessons/${lessonId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        // Refresh lessons list
+        const lessonsRes = await fetch(`${API_BASE_URL}/admin/lessons`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const lessonsData = await lessonsRes.json();
+        if (lessonsData.success) setAllLessons(lessonsData.data);
+      } else {
+        alert(data.message || 'Failed to delete lesson');
+      }
+    } catch (error) {
+      console.error('Error deleting lesson:', error);
+      alert('Network error. Please try again.');
+    }
   };
 
   // Discussions API functions
@@ -2727,7 +3901,47 @@ const AdminDashboard = () => {
   fetchDiscussions();
   };
 
+  const fetchAuditLogs = async () => {
+    setAuditLoading(true);
+    const token = getToken();
+    let url = `${API_BASE_URL}/admin/audit-logs?page=${auditPagination.page}&limit=50`;
+    if (auditFilters.user) url += `&user=${auditFilters.user}`;
+    if (auditFilters.action) url += `&action=${auditFilters.action}`;
+    if (auditFilters.startDate) url += `&startDate=${auditFilters.startDate}`;
+    if (auditFilters.endDate) url += `&endDate=${auditFilters.endDate}`;
+    try {
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      const data = await res.json();
+      console.log('Audit logs response:', data); // Debug log
+      if (data.success) {
+        setAuditLogs(data.data);
+        setAuditPagination(prev => ({ ...prev, total: data.pagination.total }));
+      } else {
+        console.error('Failed to fetch audit logs:', data.message);
+      }
+    } catch (error) {
+      console.error('Error fetching audit logs:', error);
+    } finally {
+      setAuditLoading(false);
+    }
+  };
+
+  const applyAuditFilters = () => {
+    setAuditFilters(localAuditFilters);
+    setAuditPagination(prev => ({ ...prev, page: 1 }));
+  };
+
+  const resetAuditFilters = () => {
+    setLocalAuditFilters({ user: '', action: '', startDate: '', endDate: '' });
+    setAuditFilters({ user: '', action: '', startDate: '', endDate: '' });
+    setAuditPagination(prev => ({ ...prev, page: 1 }));
+  };
+
   const handleLogout = () => { localStorage.removeItem('user'); localStorage.removeItem('token'); navigate('/login'); };
+  const handleProfileUpdate = (updatedUser) => {
+    setAdmin(updatedUser);
+    localStorage.setItem('user', JSON.stringify(updatedUser));
+  };
   const getInitials = (name) => name?.split(' ').map(n=>n[0]).join('').toUpperCase().slice(0,2) || 'AD';
   const getStatusBadge = (status) => {
     const map = {
@@ -2919,8 +4133,10 @@ const AdminDashboard = () => {
               { name: 'Dashboard', view: 'dashboard', icon: Layout },
               { name: 'User Management', view: 'users', icon: Shield },
               { name: 'Tutors', view: 'tutors', icon: Users },
+              { name: 'Audit Logs', view: 'auditLogs', icon: FileText },
               { name: 'Courses', view: 'courses', icon: BookOpen },
               { name: 'Schedule', view: 'schedule', icon: CalendarIcon },
+              { name: 'Announcements', view: 'announcements', icon: Bell },
               { name: 'Resources', view: 'resources', icon: FileText },
               { name: 'Messages', view: 'messages', icon: MessageSquare },
               { name: 'Discussions', view: 'discussions', icon: MessageSquare }
@@ -2945,8 +4161,43 @@ const AdminDashboard = () => {
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <header className="h-20 bg-white border-b border-slate-200 flex items-center justify-between px-4 sm:px-8 sticky top-0 z-30">
-          <div className="flex items-center space-x-4"><button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-2 rounded-lg hover:bg-slate-100"><Menu className="h-6 w-6" /></button><h1 className="text-xl font-bold text-slate-900">{activeView === 'dashboard' ? 'Dashboard' : activeView === 'tutors' ? 'Tutor Management' : activeView === 'schedule' ? 'Schedule Management' : activeView === 'courses' ? 'Course Management' : activeView === 'messages' ? 'Messages' : activeView === 'resources' ? 'Resources' : 'User Management'}</h1></div>
-          <div className="flex items-center space-x-4"><button className="relative p-2 text-slate-500 hover:bg-slate-100 rounded-xl"><Bell className="h-5 w-5" /><span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full"></span></button><div className="h-8 w-px bg-slate-200"></div><div className="relative"><button className="flex items-center space-x-3 p-1.5 hover:bg-slate-100 rounded-xl"><div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold text-xs">{admin ? getInitials(admin.name) : 'AD'}</div><span className="hidden md:block text-sm font-medium text-slate-700">{admin?.name?.split(' ')[0] || 'Admin'}</span><ChevronDown className="h-4 w-4 text-slate-400" /></button></div></div>
+          {/* Left side - page title */}
+          <div className="flex items-center space-x-4">
+            <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-2 rounded-lg hover:bg-slate-100">
+              <Menu className="h-6 w-6" />
+            </button>
+            <h1 className="text-xl font-bold text-slate-900">
+              {activeView === 'dashboard' ? 'Dashboard' : 
+              activeView === 'tutors' ? 'Tutor Management' : 
+              activeView === 'schedule' ? 'Schedule Management' : 
+              activeView === 'courses' ? 'Course Management' : 
+              activeView === 'messages' ? 'Messages' : 
+              activeView === 'resources' ? 'Resources' : 'User Management'}
+            </h1>
+          </div>
+
+          {/* Right side - notifications and profile */}
+          <div className="flex items-center space-x-4">
+            <button className="relative p-2 text-slate-500 hover:bg-slate-100 rounded-xl">
+              <Bell className="h-5 w-5" />
+              <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full"></span>
+            </button>
+            <div className="h-8 w-px bg-slate-200"></div>
+            
+            {/* Profile button that opens modal */}
+            <button 
+              onClick={() => setShowProfileModal(true)}
+              className="flex items-center space-x-3 p-1.5 hover:bg-slate-100 rounded-xl"
+            >
+              <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold text-xs">
+                {admin ? getInitials(admin.name) : 'AD'}
+              </div>
+              <span className="hidden md:block text-sm font-medium text-slate-700">
+                {admin?.name?.split(' ')[0] || 'Admin'}
+              </span>
+              <Settings className="h-4 w-4 text-slate-400" />
+            </button>
+          </div>
         </header>
         <main className="flex-1 overflow-y-auto p-4 sm:p-8">
           <AnimatePresence mode="wait">
@@ -2983,14 +4234,139 @@ const AdminDashboard = () => {
                 tileContent={tileContent}
                 formatTime={formatTime}
                 setActiveView={setActiveView}
+                onEditLesson={openEditLessonModal}
+                onDeleteLesson={handleDeleteLesson}
               />
             )}
             {activeView === 'courses' && <CourseManagement onBack={() => setActiveView('dashboard')} key="courses" />}
             {activeView === 'messages' && <AdminMessages onBack={() => setActiveView('dashboard')} key="messages" />}
             {activeView === 'resources' && <ResourceManagement onBack={() => setActiveView('dashboard')} key="resources" />}
+            {activeView === 'announcements' && (
+              <AnnouncementManager
+                key="announcements"
+                pageTitle="Campus Announcements"
+                pageDescription="Post updates for the entire student body or specific courses."
+                announcements={announcements}
+                loading={announcementsLoading}
+                allowCreate={true}
+                allowCommon={true}
+                courseOptions={announcementCourses}
+                currentUserId={admin?.id || admin?._id}
+                currentUserRole={admin?.role}
+                onBack={() => setActiveView('dashboard')}
+                onRefresh={fetchAnnouncements}
+                onCreateAnnouncement={handleCreateAnnouncement}
+                onUpdateAnnouncement={handleUpdateAnnouncement}
+                onDeleteAnnouncement={handleDeleteAnnouncement}
+              />
+            )}
             {activeView === 'users' && <UserManagement onBack={() => setActiveView('dashboard')} key="users" />}
             {activeView === 'discussions' && <div key="discussions">{renderDiscussions()}</div>}
+            {activeView === 'auditLogs' && (
+              <motion.div key="auditLogs" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-7xl mx-auto space-y-8">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <button onClick={() => setActiveView('dashboard')} className="p-2 hover:bg-white border rounded-xl">
+                      <ChevronLeft className="h-5 w-5" />
+                    </button>
+                    <div>
+                      <h1 className="text-2xl font-bold">Audit Logs</h1>
+                      <p className="text-slate-500">Track all admin actions and system events</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setShowAuditFilters(!showAuditFilters)} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold">
+                    <Filter className="h-4 w-4" /> {showAuditFilters ? 'Hide Filters' : 'Show Filters'}
+                  </button>
+                </div>
 
+                {showAuditFilters && (
+                  <div className="bg-white p-5 rounded-3xl border shadow-sm">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      <div>
+                        <label className="text-xs font-bold uppercase">User</label>
+                        <select value={localAuditFilters.user} onChange={e => setLocalAuditFilters({...localAuditFilters, user: e.target.value})} className="w-full px-4 py-3 bg-slate-50 rounded-xl">
+                          <option value="">All Users</option>
+                          {[...new Map(auditLogs.map(log => [log.user.id, { id: log.user.id, name: log.user.name }])).values()].map(u => (
+                            <option key={u.id} value={u.id}>{u.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold uppercase">Action</label>
+                        <select value={localAuditFilters.action} onChange={e => setLocalAuditFilters({...localAuditFilters, action: e.target.value})} className="w-full px-4 py-3 bg-slate-50 rounded-xl">
+                          <option value="">All Actions</option>
+                          {[...new Set(auditLogs.map(log => log.action))].map(a => (
+                            <option key={a} value={a}>{a.replace(/_/g, ' ')}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold uppercase">Start Date</label>
+                        <input type="date" value={localAuditFilters.startDate} onChange={e => setLocalAuditFilters({...localAuditFilters, startDate: e.target.value})} className="w-full px-4 py-3 bg-slate-50 rounded-xl" />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold uppercase">End Date</label>
+                        <input type="date" value={localAuditFilters.endDate} onChange={e => setLocalAuditFilters({...localAuditFilters, endDate: e.target.value})} className="w-full px-4 py-3 bg-slate-50 rounded-xl" />
+                      </div>
+                    </div>
+                    <div className="flex gap-3 mt-4">
+                      <button onClick={applyAuditFilters} className="px-6 py-2 bg-indigo-600 text-white rounded-xl font-bold">Apply Filters</button>
+                      <button onClick={resetAuditFilters} className="px-6 py-2 bg-slate-100 text-slate-700 rounded-xl font-bold">Reset</button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="bg-white rounded-3xl border shadow-sm overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-slate-50 border-b">
+                        <tr>
+                          <th className="px-6 py-4 text-left text-[10px] font-bold">Timestamp</th>
+                          <th className="px-6 py-4 text-left text-[10px] font-bold">User</th>
+                          <th className="px-6 py-4 text-left text-[10px] font-bold">Action</th>
+                          <th className="px-6 py-4 text-left text-[10px] font-bold">Entity</th>
+                          <th className="px-6 py-4 text-left text-[10px] font-bold">Details</th>
+                          <th className="px-6 py-4 text-left text-[10px] font-bold">IP Address</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {auditLoading ? (
+                          <tr><td colSpan="6" className="px-6 py-12 text-center"><div className="w-8 h-8 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto"></div></td></tr>
+                        ) : auditLogs.length === 0 ? (
+                          <tr><td colSpan="6" className="px-6 py-12 text-center text-slate-500">No audit logs found</td></tr>
+                        ) : (
+                          auditLogs.map(log => (
+                            <tr key={log._id} className="hover:bg-slate-50">
+                              <td className="px-6 py-4 text-sm">{new Date(log.timestamp).toLocaleString()}</td>
+                              <td className="px-6 py-4">
+                                <div>
+                                  <p className="font-medium">{log.user.name}</p>
+                                  <p className="text-[10px] text-slate-500">{log.user.role}</p>
+                                </div>
+                              </td>
+                              <td className="px-6 py-4"><span className="px-2 py-1 bg-indigo-50 text-indigo-700 text-xs rounded-full">{log.action.replace(/_/g, ' ')}</span></td>
+                              <td className="px-6 py-4">{log.entity}</td>
+                              <td className="px-6 py-4 text-sm max-w-xs truncate">{JSON.stringify(log.details)}</td>
+                              <td className="px-6 py-4 text-xs">{log.ipAddress || 'N/A'}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                  {auditPagination.total > 0 && (
+                    <div className="px-6 py-4 bg-slate-50 border-t flex items-center justify-between">
+                      <p className="text-xs text-slate-500">Showing {auditLogs.length} of {auditPagination.total} logs</p>
+                      <div className="flex gap-2">
+                        <button onClick={() => setAuditPagination(prev => ({ ...prev, page: Math.max(1, prev.page - 1) }))} disabled={auditPagination.page === 1} className="px-3 py-1 bg-white border rounded-lg text-sm disabled:opacity-50">Previous</button>
+                        <span className="px-3 py-1 text-sm">Page {auditPagination.page}</span>
+                        <button onClick={() => setAuditPagination(prev => ({ ...prev, page: prev.page + 1 }))} disabled={auditLogs.length < auditPagination.limit} className="px-3 py-1 bg-white border rounded-lg text-sm disabled:opacity-50">Next</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            )}
           </AnimatePresence>
         </main>
         <footer className="bg-white border-t border-slate-100 py-6 px-8"><div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4"><div className="flex items-center space-x-2"><BookOpen className="h-5 w-5 text-indigo-500" /><span className="font-bold text-slate-900">Smart<span className="text-indigo-500">Kuppi</span></span><span className="text-xs text-slate-400">© 2024 Admin Portal</span></div><div className="flex items-center space-x-6 text-xs font-bold text-slate-400 uppercase"><button className="hover:text-indigo-500">Docs</button><button className="hover:text-indigo-500">Support</button><button className="hover:text-indigo-500">Privacy</button></div></div></footer>
@@ -3000,6 +4376,156 @@ const AdminDashboard = () => {
       <ScheduleLessonModal isOpen={showScheduleModal} onClose={() => setShowScheduleModal(false)} tutors={tutors} onSchedule={handleScheduleLesson} loading={scheduleLoading} />
       {showDetailsModal && selectedTutor && <TutorDetailModal tutor={selectedTutor} onClose={() => { setShowDetailsModal(false); setSelectedTutor(null); }} onStatusChange={handleTutorStatusChange} actionLoading={actionLoading} />}
       {scheduleSuccess && (<motion.div initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 50 }} className="fixed bottom-4 right-4 bg-emerald-500 text-white px-4 py-3 rounded-xl shadow-lg flex items-center gap-2 z-50"><CheckCircle className="h-5 w-5" />Lesson scheduled successfully!</motion.div>)}
+
+      <ProfileEditModal
+        isOpen={showProfileModal}
+        onClose={() => setShowProfileModal(false)}
+        user={admin}
+        onUpdate={handleProfileUpdate}
+      />
+      {/* Edit Lesson Modal */}
+      <AnimatePresence>
+        {showEditLessonModal && editingLesson && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4"
+            onClick={() => setShowEditLessonModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.95 }}
+              onClick={e => e.stopPropagation()}
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+            >
+              <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 px-6 py-5">
+                <div className="flex justify-between items-center">
+                  <h2 className="text-xl font-bold text-white">Edit Lesson</h2>
+                  <button onClick={() => setShowEditLessonModal(false)} className="p-2 hover:bg-white/10 rounded-xl">
+                    <X className="h-5 w-5 text-white" />
+                  </button>
+                </div>
+                <p className="text-indigo-100 text-sm mt-1">Update lesson details</p>
+              </div>
+
+              <form onSubmit={handleUpdateLesson} className="p-6 space-y-5">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-widest mb-2">Lesson Title *</label>
+                  <input
+                    type="text"
+                    value={editLessonForm.title}
+                    onChange={e => setEditLessonForm({ ...editLessonForm, title: e.target.value })}
+                    className={`w-full px-4 py-3 bg-slate-50 border-2 rounded-xl focus:outline-none transition-all ${
+                      editLessonErrors.title ? 'border-rose-300' : 'border-transparent focus:border-indigo-500'
+                    }`}
+                  />
+                  {editLessonErrors.title && <p className="text-xs text-rose-500 mt-1">{editLessonErrors.title}</p>}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-widest mb-2">Description *</label>
+                  <textarea
+                    rows={3}
+                    value={editLessonForm.description}
+                    onChange={e => setEditLessonForm({ ...editLessonForm, description: e.target.value })}
+                    className={`w-full px-4 py-3 bg-slate-50 border-2 rounded-xl focus:outline-none transition-all ${
+                      editLessonErrors.description ? 'border-rose-300' : 'border-transparent focus:border-indigo-500'
+                    }`}
+                  />
+                  {editLessonErrors.description && <p className="text-xs text-rose-500 mt-1">{editLessonErrors.description}</p>}
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-widest mb-2">Date *</label>
+                    <input
+                      type="date"
+                      value={editLessonForm.date}
+                      onChange={e => setEditLessonForm({ ...editLessonForm, date: e.target.value })}
+                      className={`w-full px-4 py-3 bg-slate-50 border-2 rounded-xl focus:outline-none transition-all ${
+                        editLessonErrors.date ? 'border-rose-300' : 'border-transparent focus:border-indigo-500'
+                      }`}
+                    />
+                    {editLessonErrors.date && <p className="text-xs text-rose-500 mt-1">{editLessonErrors.date}</p>}
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-widest mb-2">Start Time *</label>
+                    <input
+                      type="time"
+                      value={editLessonForm.time}
+                      onChange={e => setEditLessonForm({ ...editLessonForm, time: e.target.value })}
+                      className={`w-full px-4 py-3 bg-slate-50 border-2 rounded-xl focus:outline-none transition-all ${
+                        editLessonErrors.time ? 'border-rose-300' : 'border-transparent focus:border-indigo-500'
+                      }`}
+                    />
+                    {editLessonErrors.time && <p className="text-xs text-rose-500 mt-1">{editLessonErrors.time}</p>}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-widest mb-2">Duration (minutes)</label>
+                    <select
+                      value={editLessonForm.duration}
+                      onChange={e => setEditLessonForm({ ...editLessonForm, duration: e.target.value })}
+                      className="w-full px-4 py-3 bg-slate-50 border-2 border-transparent focus:border-indigo-500 rounded-xl focus:outline-none transition-all"
+                    >
+                      <option value="30">30 minutes</option>
+                      <option value="45">45 minutes</option>
+                      <option value="60">60 minutes</option>
+                      <option value="90">90 minutes</option>
+                      <option value="120">120 minutes</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-widest mb-2">Meeting Link *</label>
+                    <input
+                      type="url"
+                      value={editLessonForm.meetingLink}
+                      onChange={e => setEditLessonForm({ ...editLessonForm, meetingLink: e.target.value })}
+                      placeholder="https://zoom.us/j/... or https://meet.google.com/..."
+                      className={`w-full px-4 py-3 bg-slate-50 border-2 rounded-xl focus:outline-none transition-all ${
+                        editLessonErrors.meetingLink ? 'border-rose-300' : 'border-transparent focus:border-indigo-500'
+                      }`}
+                    />
+                    {editLessonErrors.meetingLink && <p className="text-xs text-rose-500 mt-1">{editLessonErrors.meetingLink}</p>}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-widest mb-2">Meeting Password (Optional)</label>
+                  <input
+                    type="text"
+                    value={editLessonForm.meetingPassword}
+                    onChange={e => setEditLessonForm({ ...editLessonForm, meetingPassword: e.target.value })}
+                    className="w-full px-4 py-3 bg-slate-50 border-2 border-transparent focus:border-indigo-500 rounded-xl focus:outline-none transition-all"
+                  />
+                </div>
+
+                <div className="flex gap-3 pt-4 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setShowEditLessonModal(false)}
+                    className="flex-1 py-3 bg-white border-2 border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={editLessonSubmitting}
+                    className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl flex items-center justify-center gap-2 disabled:opacity-70"
+                  >
+                    {editLessonSubmitting ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <Save className="h-5 w-5" />}
+                    {editLessonSubmitting ? 'Updating...' : 'Update Lesson'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

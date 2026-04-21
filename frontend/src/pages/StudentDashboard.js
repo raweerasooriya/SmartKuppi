@@ -15,6 +15,9 @@ import {
 } from 'lucide-react';
 import CourseCardHeader from '../components/CourseCardHeader';
 import MessageThread from '../components/MessageThread';
+import AnnouncementManager from '../components/AnnouncementManager';
+import ProfileEditModal from '../components/ProfileEditModal';
+
 
 const API_BASE_URL = 'http://localhost:5000/api';
 
@@ -50,6 +53,16 @@ const StudentDashboard = () => {
   const [activeTab, setActiveTab] = useState('lessons');
   const [conversation, setConversation] = useState(null);
   const [loadingMessages, setLoadingMessages] = useState(false);
+
+  const [announcements, setAnnouncements] = useState([]);
+  const [announcementsLoading, setAnnouncementsLoading] = useState(false);
+
+  // Support chat states
+  const [admins, setAdmins] = useState([]);
+  const [supportConversation, setSupportConversation] = useState(null);
+  const [loadingSupportMessages, setLoadingSupportMessages] = useState(false);
+  const [supportUnreadCount, setSupportUnreadCount] = useState(0);
+  const [showProfileModal, setShowProfileModal] = useState(false);
 
   // Browse courses data
   const [courses, setCourses] = useState([]);
@@ -177,6 +190,11 @@ const StudentDashboard = () => {
     navigate('/login');
   };
 
+  const handleProfileUpdate = (updatedUser) => {
+    setUser(updatedUser);
+    localStorage.setItem('user', JSON.stringify(updatedUser));
+  };
+
   // Navigation functions
   const goToDashboard = () => {
     setActiveView('dashboard');
@@ -197,6 +215,19 @@ const StudentDashboard = () => {
   const goToDiscussions = () => {
     setActiveView('discussions');
     fetchDiscussions();
+  };
+  const goToAnnouncements = () => {
+    setActiveView('announcements');
+    fetchAnnouncements();
+  };
+  const goToSupport = () => {
+    setActiveView('support');
+    fetchAdminSupportConversation();
+  };
+  // Fixes ESLint error in StudentDashboard
+  const handleSupportMessageSent = () => {
+    fetchAdminSupportConversation(); // Refreshes the chat messages
+    fetchSupportUnreadCount();       // Refreshes the red notification dot
   };
   const goToCourseDetail = (courseId) => {
     setSelectedCourseId(courseId);
@@ -261,6 +292,20 @@ const StudentDashboard = () => {
       alert('Network error. Please try again.');
     } finally {
       setEnrollingId(null);
+    }
+  };
+
+  const handleDownload = async (resourceId, fileUrl) => {
+    try {
+      const token = localStorage.getItem('token');
+      await fetch(`${API_BASE_URL}/resources/${resourceId}/download`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      window.open(`${API_BASE_URL}${fileUrl}`, '_blank');
+    } catch (error) {
+      console.error('Download error:', error);
+      window.open(`${API_BASE_URL}${fileUrl}`, '_blank');
     }
   };
 
@@ -335,6 +380,67 @@ const StudentDashboard = () => {
       setLoadingMessages(false);
     }
   };
+
+  const fetchAnnouncements = async () => {
+  const token = localStorage.getItem('token');
+  setAnnouncementsLoading(true);
+  try {
+      const res = await fetch(`${API_BASE_URL}/announcements`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) setAnnouncements(data.data);
+    } catch (error) {
+      console.error('Error:', error);
+    } finally {
+      setAnnouncementsLoading(false);
+    }
+  };
+
+  const fetchAdminSupportConversation = async () => {
+    const token = localStorage.getItem('token');
+    setLoadingSupportMessages(true);
+    try {
+        const adminsRes = await fetch(`${API_BASE_URL}/auth/admins`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const adminsData = await adminsRes.json();
+
+        if (adminsData.success && adminsData.data.length > 0) {
+          setAdmins(adminsData.data);
+          const primaryAdmin = adminsData.data[0];
+          const res = await fetch(`${API_BASE_URL}/messages?user=${primaryAdmin._id}`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          const data = await res.json();
+          setSupportConversation({
+            id: `support-${primaryAdmin._id}`,
+            otherUser: primaryAdmin,
+            course: null,
+            messages: data.success ? data.data : []
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching support:', error);
+      } finally {
+        setLoadingSupportMessages(false);
+      }
+    };
+
+    const fetchSupportUnreadCount = async () => {
+      const token = localStorage.getItem('token');
+      try {
+        const res = await fetch(`${API_BASE_URL}/messages/inbox`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.success) {
+          // Count messages from admins that are unread
+          const unread = data.data.filter(m => !m.read && m.sender.role === 'admin').length;
+          setSupportUnreadCount(unread);
+        }
+      } catch (error) { console.error(error); }
+    };
 
   const handleMessageSent = () => {
     fetchConversation();
@@ -1289,9 +1395,12 @@ const StudentDashboard = () => {
                       <h4 className="font-bold text-slate-900">{res.title}</h4>
                       <p className="text-xs text-slate-500">{res.fileType?.toUpperCase() || 'FILE'} • {res.downloads} downloads</p>
                     </div>
-                    <a href={`${API_BASE_URL}${res.fileUrl}`} download className="p-2 text-slate-400 hover:text-indigo-600 rounded-lg transition-colors">
-                      <Download className="h-5 w-5" />
-                    </a>
+                      <button
+                        onClick={() => handleDownload(res._id, res.fileUrl)}
+                        className="p-2 text-slate-400 hover:text-indigo-600 rounded-lg transition-colors"
+                      >
+                        <Download className="h-5 w-5" />
+                      </button>
                   </div>
                 )) : <p className="text-slate-500 text-center py-4">No resources yet.</p>}
               </div>
@@ -1322,7 +1431,38 @@ const StudentDashboard = () => {
     );
   };
 
+  const renderSupport = () => (
+      <div className="max-w-7xl mx-auto space-y-8">
+        <div className="flex items-center gap-4">
+          <button onClick={goToDashboard} className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
+            <ChevronLeft className="h-5 w-5 text-slate-600" />
+          </button>
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">Support Chat</h1>
+            <p className="text-slate-500">Contact administrators for help with the platform.</p>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 min-h-[500px]">
+          {loadingSupportMessages ? (
+            <div className="flex justify-center items-center h-64">
+              <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+          ) : supportConversation ? (
+            <MessageThread 
+              conversation={supportConversation} 
+              onMessageSent={handleSupportMessageSent} 
+              onThreadRead={fetchSupportUnreadCount}
+            />
+          ) : (
+            <div className="text-center py-12 text-slate-500">No support staff available.</div>
+          )}
+        </div>
+      </div>
+    );
+
   // Determine main content
+// 1. Move the case here (Delete it from getPageTitle later)
   let mainContent;
   switch (activeView) {
     case 'myCourses':
@@ -1337,12 +1477,30 @@ const StudentDashboard = () => {
     case 'discussions':
       mainContent = renderDiscussions();
       break;
-    case 'courseDetail':
-      mainContent = renderCourseDetail();
+    // INSERT THIS NEW CASE HERE:
+    case 'announcements':
+      mainContent = (
+        <AnnouncementManager 
+          pageTitle="Campus Notice Board"
+          pageDescription="Updates from your tutors and administration."
+          announcements={announcements}
+          loading={announcementsLoading}
+          allowCreate={false} 
+          currentUserId={user?.id || user?._id}
+          onBack={goToDashboard}
+          onRefresh={fetchAnnouncements}
+        />
+      );
       break;
-    default:
-      mainContent = renderDashboardContent();
-  }
+      case 'support':
+        mainContent = renderSupport();
+        break;
+      case 'courseDetail':
+        mainContent = renderCourseDetail();
+        break;
+      default:
+        mainContent = renderDashboardContent();
+    }
 
   // Sidebar navigation links
   const navLinks = [
@@ -1351,6 +1509,8 @@ const StudentDashboard = () => {
     { name: 'Browse Courses', view: 'browse', icon: Compass },
     { name: 'Schedule', view: 'schedule', icon: CalendarIcon },
     { name: 'Discussions', view: 'discussions', icon: MessageCircle },
+    { name: 'Announcements', view: 'announcements', icon: Bell },
+    { name: 'Support Chat', view: 'support', icon: MessageSquare, badge: supportUnreadCount },
   ];
 
   // Get page title based on active view
@@ -1361,6 +1521,7 @@ const StudentDashboard = () => {
       case 'browse': return 'Browse Courses';
       case 'schedule': return 'Schedule';
       case 'discussions': return 'Discussions';
+      case 'announcements': return 'Announcements';
       case 'courseDetail': return courseDetail?.title || 'Course Details';
       default: return 'Dashboard';
     }
@@ -1416,6 +1577,8 @@ const StudentDashboard = () => {
                     else if (link.view === 'browse') goToBrowse();
                     else if (link.view === 'schedule') goToSchedule();
                     else if (link.view === 'discussions') goToDiscussions();
+                    else if (link.view === 'announcements') goToAnnouncements(); // ADDED
+                    else if (link.view === 'support') goToSupport();           // ADDED
                   }}
                   className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl transition-all duration-200 group ${
                     isActive 
@@ -1475,14 +1638,14 @@ const StudentDashboard = () => {
             <div className="h-8 w-px bg-slate-200 mx-1"></div>
             <div className="relative">
               <button 
-                onClick={() => setProfileDropdown(!profileDropdown)}
-                className="flex items-center space-x-3 p-1.5 hover:bg-slate-100 rounded-xl transition-colors"
+                onClick={() => setShowProfileModal(true)}
+                className="flex items-center space-x-3 p-1.5 hover:bg-slate-100 rounded-xl"
               >
                 <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold text-xs">
                   {getInitials()}
                 </div>
-                <span className="hidden md:block text-sm font-medium text-slate-700">{user.name || 'Student'}</span>
-                <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${profileDropdown ? 'rotate-180' : ''}`} />
+                <span className="hidden md:block text-sm font-medium text-slate-700">{user?.name || 'Student'}</span>
+                <Settings className="h-4 w-4 text-slate-400" />
               </button>
 
               <AnimatePresence>
@@ -1544,6 +1707,12 @@ const StudentDashboard = () => {
           </div>
         </footer>
       </div>
+      <ProfileEditModal
+        isOpen={showProfileModal}
+        onClose={() => setShowProfileModal(false)}
+        user={user}
+        onUpdate={handleProfileUpdate}
+      />
     </div>
   );
 };

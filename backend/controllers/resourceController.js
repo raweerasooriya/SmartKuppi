@@ -1,33 +1,20 @@
-// backend/controllers/resourceController.js
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
 const Resource = require('../models/Resource');
 const Course = require('../models/Course');
+const AuditLog = require('../models/AuditLog');
+const { logAudit } = require('../middleware/auditMiddleware');
 
-// Ensure uploads directory exists
 const uploadDir = path.join(__dirname, '../uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
-// Configure multer for local disk storage
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  }
+  destination: (req, file, cb) => cb(null, uploadDir),
+  filename: (req, file, cb) => cb(null, Date.now() + '-' + Math.round(Math.random() * 1E9) + path.extname(file.originalname))
 });
 
-const upload = multer({
-  storage,
-  limits: { fileSize: 10 * 1024 * 1024 } // 10 MB
-});
-
-// Middleware for single file upload
+const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
 exports.uploadResourceFile = upload.single('file');
 
 // @desc    Upload a resource file and create resource record
@@ -38,19 +25,13 @@ exports.createResource = async (req, res) => {
     const { courseId } = req.params;
     const { title, description, fileType } = req.body;
     const course = await Course.findById(courseId);
-    if (!course) {
-      return res.status(404).json({ success: false, message: 'Course not found' });
-    }
+    if (!course) return res.status(404).json({ success: false, message: 'Course not found' });
     if (course.tutor.toString() !== req.user.id && req.user.role !== 'admin') {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
+    if (!req.file) return res.status(400).json({ success: false, message: 'No file uploaded' });
 
-    if (!req.file) {
-      return res.status(400).json({ success: false, message: 'No file uploaded' });
-    }
-
-    const fileUrl = `/uploads/${req.file.filename}`; // relative URL to be served statically
-
+    const fileUrl = `/uploads/${req.file.filename}`;
     const resource = await Resource.create({
       title: title || req.file.originalname,
       description: description || '',
@@ -58,6 +39,13 @@ exports.createResource = async (req, res) => {
       fileType: fileType || 'other',
       course: courseId,
       uploadedBy: req.user.id
+    });
+
+    await logAudit({
+      userId: req.user.id, userName: req.user.name, userEmail: req.user.email, userRole: req.user.role,
+      action: 'UPLOAD_RESOURCE', entity: 'Resource', entityId: resource._id,
+      details: { title: resource.title, courseId, fileType: resource.fileType, fileSize: req.file.size },
+      req
     });
 
     res.status(201).json({ success: true, data: resource });
@@ -76,7 +64,6 @@ exports.getCourseResources = async (req, res) => {
     const course = await Course.findById(courseId);
     if (!course) return res.status(404).json({ success: false, message: 'Course not found' });
 
-    // Check access
     let canView = false;
     if (course.status === 'published') canView = true;
     if (req.user && (req.user.id === course.tutor.toString() || req.user.role === 'admin')) canView = true;
@@ -105,13 +92,17 @@ exports.deleteResource = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
 
-    // Delete file from disk
-    const filePath = path.join(uploadDir, path.basename(resource.fileUrl));
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-    }
+    await logAudit({
+      userId: req.user.id, userName: req.user.name, userEmail: req.user.email, userRole: req.user.role,
+      action: 'DELETE_RESOURCE', entity: 'Resource', entityId: resource._id,
+      details: { title: resource.title, courseId: resource.course._id },
+      req
+    });
 
+    const filePath = path.join(uploadDir, path.basename(resource.fileUrl));
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
     await resource.deleteOne();
+
     res.json({ success: true, message: 'Resource deleted' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -127,6 +118,20 @@ exports.incrementDownload = async (req, res) => {
     if (!resource) return res.status(404).json({ success: false, message: 'Resource not found' });
     resource.downloads += 1;
     await resource.save();
+
+    // Audit log for resource download
+    await logAudit({
+      userId: req.user.id,
+      userName: req.user.name,
+      userEmail: req.user.email,
+      userRole: req.user.role,
+      action: 'DOWNLOAD_RESOURCE',
+      entity: 'Resource',
+      entityId: resource._id,
+      details: { title: resource.title, courseId: resource.course },
+      req
+    });
+
     res.json({ success: true, downloads: resource.downloads });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

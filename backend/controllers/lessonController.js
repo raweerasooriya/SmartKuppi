@@ -1,6 +1,7 @@
-// backend/controllers/lessonController.js
 const Lesson = require('../models/Lesson');
 const Course = require('../models/Course');
+const AuditLog = require('../models/AuditLog');
+const { logAudit } = require('../middleware/auditMiddleware');
 
 // @desc    Create a lesson for a course
 // @route   POST /api/courses/:courseId/lessons
@@ -17,13 +18,14 @@ exports.createLesson = async (req, res) => {
     }
 
     const lesson = await Lesson.create({
-      title,
-      description,
-      course: courseId,
-      date,
-      duration,
-      meetingLink,
-      meetingPassword
+      title, description, course: courseId, date, duration, meetingLink, meetingPassword
+    });
+
+    await logAudit({
+      userId: req.user.id, userName: req.user.name, userEmail: req.user.email, userRole: req.user.role,
+      action: 'CREATE_LESSON', entity: 'Lesson', entityId: lesson._id,
+      details: { title, courseId, date },
+      req
     });
 
     res.status(201).json({ success: true, data: lesson });
@@ -41,11 +43,9 @@ exports.getCourseLessons = async (req, res) => {
     const course = await Course.findById(courseId);
     if (!course) return res.status(404).json({ success: false, message: 'Course not found' });
 
-    // Check access
     let canView = false;
     if (course.status === 'published') canView = true;
     if (req.user && (req.user.id === course.tutor.toString() || req.user.role === 'admin')) canView = true;
-    // For students, check enrollment
     if (req.user && req.user.role === 'student') {
       const Enrollment = require('../models/Enrollment');
       const enrolled = await Enrollment.findOne({ student: req.user.id, course: courseId, status: 'active' });
@@ -72,6 +72,14 @@ exports.updateLesson = async (req, res) => {
     }
 
     const updated = await Lesson.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+
+    await logAudit({
+      userId: req.user.id, userName: req.user.name, userEmail: req.user.email, userRole: req.user.role,
+      action: 'UPDATE_LESSON', entity: 'Lesson', entityId: lesson._id,
+      details: { title: updated.title, updatedFields: Object.keys(req.body) },
+      req
+    });
+
     res.json({ success: true, data: updated });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -88,6 +96,13 @@ exports.deleteLesson = async (req, res) => {
     if (lesson.course.tutor.toString() !== req.user.id && req.user.role !== 'admin') {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
+
+    await logAudit({
+      userId: req.user.id, userName: req.user.name, userEmail: req.user.email, userRole: req.user.role,
+      action: 'DELETE_LESSON', entity: 'Lesson', entityId: lesson._id,
+      details: { title: lesson.title, courseId: lesson.course._id },
+      req
+    });
 
     await lesson.deleteOne();
     res.json({ success: true, message: 'Lesson deleted' });

@@ -13,7 +13,8 @@ const {
   login,
   getMe,
   checkEmail,
-  getAdmins  
+  getAdmins,
+  updateProfile       // <-- add this
 } = authController;
 
 const {
@@ -28,7 +29,8 @@ console.log('✅ Auth functions loaded:', {
   registerTutor: !!registerTutor,
   login: !!login,
   getMe: !!getMe,
-  checkEmail: !!checkEmail
+  checkEmail: !!checkEmail,
+  updateProfile: !!updateProfile   // <-- add this
 });
 
 console.log('✅ Forgot password functions loaded:', {
@@ -77,6 +79,9 @@ router.post('/check-email', checkEmail);
 router.post('/forgot-password', forgotPassword);
 router.post('/verify-otp', verifyOTP);
 router.post('/reset-password', resetPassword);
+router.get('/admins', protect, getAdmins);
 
-router.get('/admins', protect, getAdmins); 
+// ✅ NEW: Update own profile (authenticated users only)
+router.put('/profile', protect, updateProfile);
+
 module.exports = router;
