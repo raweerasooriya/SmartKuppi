@@ -78,5 +78,53 @@ router.get('/resources', getAllResources);
 router.get('/messages/conversations', getAdminConversations);
 router.post('/messages/send', adminSendMessage);
 
+// ============ RESOURCE MANAGEMENT (ADMIN) ============
+// (keep your existing GET route)
+router.get('/resources', getAllResources);
+
+// Add these two new routes:
+router.put('/resources/:id', protect, authorize('admin'), async (req, res) => {
+  try {
+    const Resource = require('../models/Resource');
+    const { title, description, fileType } = req.body;
+    const resource = await Resource.findByIdAndUpdate(
+      req.params.id,
+      { title, description, fileType },
+      { new: true, runValidators: true }
+    );
+    if (!resource) {
+      return res.status(404).json({ success: false, message: 'Resource not found' });
+    }
+    res.json({ success: true, data: resource });
+  } catch (error) {
+    console.error('Error updating resource:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.delete('/resources/:id', protect, authorize('admin'), async (req, res) => {
+  try {
+    const Resource = require('../models/Resource');
+    const fs = require('fs');
+    const path = require('path');
+    const resource = await Resource.findById(req.params.id);
+    if (!resource) {
+      return res.status(404).json({ success: false, message: 'Resource not found' });
+    }
+    // Delete the physical file if it exists
+    if (resource.fileUrl) {
+      const filePath = path.join(__dirname, '../uploads', path.basename(resource.fileUrl));
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    }
+    await resource.deleteOne();
+    res.json({ success: true, message: 'Resource deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting resource:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 module.exports = router;
 

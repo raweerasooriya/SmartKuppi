@@ -11,12 +11,13 @@ import {
   Settings, LogOut, Menu, X, FileText, Search, Star, AlertCircle,
   ChevronDown, Mail, Phone, Award, CheckCircle, XCircle, GraduationCap,
   FolderOpen, Inbox, Edit3, Upload, ExternalLink, MoreVertical,
-  Save, ChevronLeft, Filter, Link as LinkIcon, Play, User, Download, Send, ThumbsUp
+  Save, ChevronLeft, Filter, Link as LinkIcon, Play, User, Download, Send, ThumbsUp, Edit2
 } from 'lucide-react';
 import CourseCardHeader from '../components/CourseCardHeader';
 import MessageThread from '../components/MessageThread';
 
 const API_BASE_URL = 'http://localhost:5000/api';
+const getToken = () => localStorage.getItem('token');
 
 const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) => {
   const navigate = useNavigate();
@@ -124,6 +125,13 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
   const [submitting, setSubmitting] = useState(false);
   const [replyingTo, setReplyingTo] = useState(null);
   const [replyContent, setReplyContent] = useState('');
+
+  // Resource edit state
+  const [showEditResourceModal, setShowEditResourceModal] = useState(false);
+  const [editingResource, setEditingResource] = useState(null);
+  const [editResourceForm, setEditResourceForm] = useState({ title: '', description: '', fileType: 'other' });
+  const [editResourceError, setEditResourceError] = useState('');
+  const [editResourceSubmitting, setEditResourceSubmitting] = useState(false);
 
   // ========== Initial auth check ==========
   useEffect(() => {
@@ -568,6 +576,51 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
       console.error('Error fetching tutor resources:', error);
     } finally {
       setTutorResourcesLoading(false);
+    }
+  };
+
+  const openEditResourceModal = (resource) => {
+  setEditingResource(resource);
+  setEditResourceForm({
+    title: resource.title,
+    description: resource.description || '',
+    fileType: resource.fileType
+  });
+  setShowEditResourceModal(true);
+  };
+
+  const handleUpdateResource = async (e) => {
+    e.preventDefault();
+    if (!editResourceForm.title.trim()) {
+      setEditResourceError('Title is required');
+      return;
+    }
+    setEditResourceSubmitting(true);
+    const token = getToken();
+    try {
+      const res = await fetch(`${API_BASE_URL}/resources/${editingResource._id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          title: editResourceForm.title,
+          description: editResourceForm.description,
+          fileType: editResourceForm.fileType
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setShowEditResourceModal(false);
+        fetchTutorResources(); // refresh list
+      } else {
+        setEditResourceError(data.message || 'Failed to update resource');
+      }
+    } catch (error) {
+      setEditResourceError('Network error. Please try again.');
+    } finally {
+      setEditResourceSubmitting(false);
     }
   };
 
@@ -1495,7 +1548,6 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
 
   // Resources view
   const renderResources = () => {
-    // Filter resources based on search, type, date, course
     const filteredResources = tutorResources.filter(r => {
       const matchSearch = r.title.toLowerCase().includes(tutorSearchTerm.toLowerCase()) ||
                           (r.description || '').toLowerCase().includes(tutorSearchTerm.toLowerCase());
@@ -1563,15 +1615,13 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
                     <th className="px-6 py-4 text-left text-[10px] font-bold">Resource</th>
                     <th className="px-6 py-4 text-left text-[10px] font-bold">Course</th>
                     <th className="px-6 py-4 text-left text-[10px] font-bold">Type</th>
-                    <th className="px-6 py-4 text-left text-[10px] font-bold">Size</th>
-                    <th className="px-6 py-4 text-left text-[10px] font-bold">Downloads</th>
                     <th className="px-6 py-4 text-left text-[10px] font-bold">Uploaded</th>
                     <th className="px-6 py-4 text-right text-[10px] font-bold">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
                   {filteredResources.length === 0 ? (
-                    <tr><td colSpan="7" className="px-6 py-12 text-center text-slate-500">No resources found</td></tr>
+                    <tr><td colSpan="5" className="px-6 py-12 text-center text-slate-500">No resources found</td></tr>
                   ) : (
                     filteredResources.map(r => (
                       <tr key={r._id} className="hover:bg-slate-50">
@@ -1588,11 +1638,34 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
                           <p className="text-sm font-medium">{r.course?.title}</p>
                         </td>
                         <td className="px-6 py-4"><span className="px-2 py-1 bg-slate-100 text-slate-600 text-xs rounded-full uppercase">{r.fileType}</span></td>
-                        <td className="px-6 py-4 text-sm">{r.fileSize || 'N/A'}</td>
-                        <td className="px-6 py-4 text-sm">{r.downloads || 0}</td>
                         <td className="px-6 py-4 text-sm">{new Date(r.createdAt).toLocaleDateString()}</td>
                         <td className="px-6 py-4 text-right">
-                          <a href={`${API_BASE_URL}${r.fileUrl}`} target="_blank" rel="noopener noreferrer" className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg inline-block"><Download className="h-4 w-4" /></a>                        </td>
+                          <div className="flex items-center justify-end gap-2">
+                            {/* Download icon */}
+                            <a href={`${API_BASE_URL}${r.fileUrl}`} target="_blank" rel="noopener noreferrer" className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg">
+                              <Download className="h-4 w-4" />
+                            </a>
+                            {/* Edit button (three dots) */}
+                            <div className="relative">
+                              <button
+                                onClick={() => setEditingResource(editingResource?._id === r._id ? null : r)}
+                                className="p-2 text-slate-400 hover:bg-slate-100 rounded-lg"
+                              >
+                                <MoreVertical className="h-4 w-4" />
+                              </button>
+                              {editingResource?._id === r._id && (
+                                <div className="absolute right-0 mt-2 w-36 bg-white rounded-lg shadow-lg border border-slate-100 py-1 z-10">
+                                  <button
+                                    onClick={() => openEditResourceModal(r)}
+                                    className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                                  >
+                                    <Edit2 className="h-4 w-4" /> Edit
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </td>
                       </tr>
                     ))
                   )}
@@ -1601,6 +1674,92 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
             </div>
           </div>
         )}
+
+        {/* Edit Resource Modal */}
+        <AnimatePresence>
+          {showEditResourceModal && editingResource && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4"
+              onClick={() => setShowEditResourceModal(false)}
+            >
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0, y: 20 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.95, opacity: 0, y: 20 }}
+                onClick={e => e.stopPropagation()}
+                className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden"
+              >
+                <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 px-6 py-4">
+                  <div className="flex justify-between items-center">
+                    <h2 className="text-xl font-bold text-white">Edit Resource</h2>
+                    <button onClick={() => setShowEditResourceModal(false)} className="p-2 hover:bg-white/10 rounded-xl">
+                      <X className="h-5 w-5 text-white" />
+                    </button>
+                  </div>
+                </div>
+                <form onSubmit={handleUpdateResource} className="p-6 space-y-4">
+                  {editResourceError && (
+                    <div className="bg-rose-50 border border-rose-200 p-3 rounded-xl text-rose-600 text-sm">
+                      {editResourceError}
+                    </div>
+                  )}
+                  <div>
+                    <label className="text-xs font-bold uppercase mb-1 block">Resource Title *</label>
+                    <input
+                      type="text"
+                      value={editResourceForm.title}
+                      onChange={e => setEditResourceForm({ ...editResourceForm, title: e.target.value })}
+                      className="w-full px-4 py-3 bg-slate-50 rounded-xl focus:border-indigo-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold uppercase mb-1 block">Description (optional)</label>
+                    <textarea
+                      rows={3}
+                      value={editResourceForm.description}
+                      onChange={e => setEditResourceForm({ ...editResourceForm, description: e.target.value })}
+                      className="w-full px-4 py-3 bg-slate-50 rounded-xl resize-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold uppercase mb-1 block">File Type</label>
+                    <select
+                      value={editResourceForm.fileType}
+                      onChange={e => setEditResourceForm({ ...editResourceForm, fileType: e.target.value })}
+                      className="w-full px-4 py-3 bg-slate-50 rounded-xl focus:border-indigo-500 focus:outline-none"
+                    >
+                      <option value="pdf">PDF</option>
+                      <option value="video">Video</option>
+                      <option value="image">Image</option>
+                      <option value="link">Link (URL)</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+                  <div className="flex gap-3 pt-4">
+                    <button
+                      type="button"
+                      onClick={() => setShowEditResourceModal(false)}
+                      className="flex-1 py-3 bg-white border-2 border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={editResourceSubmitting}
+                      className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl flex items-center justify-center gap-2 disabled:opacity-70"
+                    >
+                      {editResourceSubmitting ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : <Save className="h-4 w-4" />}
+                      {editResourceSubmitting ? 'Updating...' : 'Update Resource'}
+                    </button>
+                  </div>
+                </form>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.div>
     );
   };

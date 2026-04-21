@@ -50,7 +50,7 @@ exports.createUser = async (req, res) => {
       userData.status = status;
     } else {
       // Default status based on role (for self-registration)
-      userData.status = role === 'tutor' ? 'pending' : 'active';
+      userData.status = role === 'tutor' ? 'approved' : 'active';
     }
     
     // Add student-specific fields
