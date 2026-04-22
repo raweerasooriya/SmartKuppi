@@ -139,8 +139,10 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
   const [resourceDescription, setResourceDescription] = useState('');
   const [resourceFile, setResourceFile] = useState(null);
   const [resourceFileType, setResourceFileType] = useState('other');
+  const [resourceTags, setResourceTags] = useState('');
   const [resourceSubmitting, setResourceSubmitting] = useState(false);
   const [resourceSuccess, setResourceSuccess] = useState(false);
+  const [selectedTagFilter, setSelectedTagFilter] = useState('');
   
   // Resources view state
   const [tutorResources, setTutorResources] = useState([]);
@@ -2381,16 +2383,45 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
             )}
             {courseDetailActiveTab === 'resources' && (
               <div className="space-y-4">
+                {/* Tag Filter */}
+                {resources.length > 0 && (
+                  <div className="mb-4">
+                    <label className="block text-xs font-bold text-slate-700 mb-2">Filter by Tag:</label>
+                    <select
+                      value={selectedTagFilter}
+                      onChange={e => setSelectedTagFilter(e.target.value)}
+                      className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm"
+                    >
+                      <option value="">All Tags</option>
+                      {Array.from(new Set(resources.flatMap(r => r.tags || []))).map(tag => (
+                        <option key={tag} value={tag}>{tag}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 {resources.length > 0 ? (
-                  resources.map(res => (
-                    <div key={res._id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between">
-                      <div>
-                        <h4 className="font-bold text-slate-900">{res.title}</h4>
-                        <p className="text-xs text-slate-500">{res.fileType?.toUpperCase() || 'FILE'} • {res.downloads} downloads</p>
+                  resources
+                    .filter(res => !selectedTagFilter || (res.tags && res.tags.includes(selectedTagFilter)))
+                    .map(res => (
+                    <div key={res._id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col gap-2">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="font-bold text-slate-900">{res.title}</h4>
+                          <p className="text-xs text-slate-500">{res.fileType?.toUpperCase() || 'FILE'} • {res.downloads} downloads</p>
+                        </div>
+                        <a href={`${API_BASE_URL}${res.fileUrl}`} download className="p-2 text-slate-400 hover:text-indigo-600 rounded-lg transition-colors">
+                          <Download className="h-5 w-5" />
+                        </a>
                       </div>
-                      <a href={`${API_BASE_URL}${res.fileUrl}`} download className="p-2 text-slate-400 hover:text-indigo-600 rounded-lg transition-colors">
-                        <Download className="h-5 w-5" />
-                      </a>
+                      {res.tags && res.tags.length > 0 && (
+                        <div className="flex gap-2 flex-wrap">
+                          {res.tags.map(tag => (
+                            <span key={tag} className="px-2 py-1 bg-indigo-100 text-indigo-600 text-xs rounded-full font-medium">
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))
                 ) : (
@@ -2643,6 +2674,7 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
       formData.append('title', resourceTitle);
       formData.append('description', resourceDescription);
       formData.append('fileType', resourceFileType);
+      formData.append('tags', resourceTags);
       try {
         const res = await fetch(`${API_BASE_URL}/resources/courses/${selectedCourseId}/resources`, {
           method: 'POST',
@@ -2705,6 +2737,16 @@ const TutorDashboard = ({ initialView = 'dashboard', initialCourseId = null }) =
                 onChange={e => setResourceDescription(e.target.value)}
                 className="w-full px-4 py-3 bg-slate-50 border-2 border-transparent focus:border-brand-500 rounded-xl focus:outline-none transition-all resize-none"
                 placeholder="Brief description of the resource"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-widest mb-2">Tags (optional, comma-separated)</label>
+              <input
+                type="text"
+                value={resourceTags}
+                onChange={e => setResourceTags(e.target.value)}
+                className="w-full px-4 py-3 bg-slate-50 border-2 border-transparent focus:border-brand-500 rounded-xl focus:outline-none transition-all"
+                placeholder="e.g. exam, notes, assignment, important"
               />
             </div>
             <div>

@@ -20,10 +20,13 @@ router.put('/:id', protect, authorize('tutor', 'admin'), async (req, res) => {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
 
-    const { title, description, fileType } = req.body;
+    const { title, description, fileType, tags } = req.body;
     resource.title = title;
     resource.description = description;
     resource.fileType = fileType;
+    if (tags) {
+      resource.tags = Array.isArray(tags) ? tags : (typeof tags === 'string' && tags.length > 0 ? tags.split(',').map(t => t.trim()) : []);
+    }
 
     await resource.save();
     res.json({ success: true, data: resource });

@@ -5,6 +5,8 @@ const Resource = require('../models/Resource');
 const Course = require('../models/Course');
 const AuditLog = require('../models/AuditLog');
 const { logAudit } = require('../middleware/auditMiddleware');
+const sharp = require('sharp'); // Add at the top
+const pdf = require('pdf-poppler'); // Add at the top
 
 const uploadDir = path.join(__dirname, '../uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
@@ -23,7 +25,7 @@ exports.uploadResourceFile = upload.single('file');
 exports.createResource = async (req, res) => {
   try {
     const { courseId } = req.params;
-    const { title, description, fileType } = req.body;
+    const { title, description, fileType, tags } = req.body;
     const course = await Course.findById(courseId);
     if (!course) return res.status(404).json({ success: false, message: 'Course not found' });
     if (course.tutor.toString() !== req.user.id && req.user.role !== 'admin') {
@@ -32,13 +34,40 @@ exports.createResource = async (req, res) => {
     if (!req.file) return res.status(400).json({ success: false, message: 'No file uploaded' });
 
     const fileUrl = `/uploads/${req.file.filename}`;
+    let previewUrl = null;
+    if (req.file) {
+      if (req.file.mimetype.startsWith('image/')) {
+        // If the file is an image, generate a thumbnail
+        const thumbFilename = 'thumb_' + req.file.filename;
+        const thumbPath = path.join(uploadDir, thumbFilename);
+        await sharp(req.file.path)
+          .resize(200, 200, { fit: 'inside' })
+          .toFile(thumbPath);
+        previewUrl = `/uploads/${thumbFilename}`;
+      } else if (req.file.mimetype === 'application/pdf') {
+        // Generate PDF thumbnail
+        const pdfPath = req.file.path;
+        const outputPath = path.join(uploadDir, 'thumb_' + req.file.filename + '.jpg');
+        const opts = {
+          format: 'jpeg',
+          out_dir: uploadDir,
+          out_prefix: 'thumb_' + req.file.filename,
+          page: 1
+        };
+        await pdf.convert(pdfPath, opts);
+        previewUrl = `/uploads/thumb_${req.file.filename}1.jpg`; // pdf-poppler appends page number
+      }
+    }
+
     const resource = await Resource.create({
       title: title || req.file.originalname,
       description: description || '',
       fileUrl,
       fileType: fileType || 'other',
       course: courseId,
-      uploadedBy: req.user.id
+      uploadedBy: req.user.id,
+      previewUrl, // Save the preview URL
+      tags: Array.isArray(tags) ? tags : (typeof tags === 'string' && tags.length > 0 ? tags.split(',').map(t => t.trim()) : [])
     });
 
     await logAudit({
@@ -74,7 +103,11 @@ exports.getCourseResources = async (req, res) => {
     }
     if (!canView) return res.status(403).json({ success: false, message: 'Not authorized' });
 
-    const resources = await Resource.find({ course: courseId }).sort('-createdAt');
+    // Tag filtering
+    const tag = req.query.tag;
+    let filter = { course: courseId };
+    if (tag) filter.tags = tag;
+    const resources = await Resource.find(filter).sort('-createdAt');
     res.json({ success: true, data: resources });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
