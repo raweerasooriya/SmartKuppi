@@ -29,7 +29,7 @@ exports.createUser = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, salt);
     
     const userData = { name, email, password: hashedPassword, phone, role };
-    userData.status = status || (role === 'tutor' ? 'pending' : 'active');
+    userData.status = status || (role === 'tutor' ? 'approved' : 'active');
     
     if (role === 'student') {
       userData.studentId = studentId;

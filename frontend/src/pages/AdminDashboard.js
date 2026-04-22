@@ -1050,7 +1050,7 @@ const ResourceManagement = ({ onBack }) => {
   // Edit/Delete state
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingResource, setEditingResource] = useState(null);
-  const [editForm, setEditForm] = useState({ title: '', description: '', fileType: 'other' });
+  const [editForm, setEditForm] = useState({ title: '', description: '', fileType: 'other', tags: [] });
   const [editFormError, setEditFormError] = useState('');
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(null);
@@ -1111,7 +1111,8 @@ const ResourceManagement = ({ onBack }) => {
     setEditForm({
       title: resource.title,
       description: resource.description || '',
-      fileType: resource.fileType
+      fileType: resource.fileType,
+      tags: resource.tags || []
     });
     setShowEditModal(true);
     setDropdownOpen(null);
@@ -1135,7 +1136,8 @@ const ResourceManagement = ({ onBack }) => {
         body: JSON.stringify({
           title: editForm.title,
           description: editForm.description,
-          fileType: editForm.fileType
+          fileType: editForm.fileType,
+          tags: editForm.tags
         })
       });
       const data = await res.json();
@@ -1215,6 +1217,15 @@ const ResourceManagement = ({ onBack }) => {
                         <div>
                           <p className="font-bold text-slate-900">{r.title}</p>
                           <p className="text-xs text-slate-500">{r.description?.slice(0, 60)}</p>
+                          {r.tags && r.tags.length > 0 && (
+                            <div className="flex gap-1 flex-wrap mt-1">
+                              {r.tags.map(tag => (
+                                <span key={tag} className="px-1.5 py-0.5 bg-indigo-100 text-indigo-600 text-[10px] rounded font-medium">
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </td>
@@ -1328,6 +1339,16 @@ const ResourceManagement = ({ onBack }) => {
                     <option value="link">Link (URL)</option>
                     <option value="other">Other</option>
                   </select>
+                </div>
+                <div>
+                  <label className="text-xs font-bold uppercase mb-1 block">Tags (comma-separated, optional)</label>
+                  <input
+                    type="text"
+                    value={Array.isArray(editForm.tags) ? editForm.tags.join(', ') : editForm.tags}
+                    onChange={e => setEditForm({ ...editForm, tags: e.target.value.split(',').map(t => t.trim()).filter(t => t) })}
+                    className="w-full px-4 py-3 bg-slate-50 rounded-xl focus:border-indigo-500 focus:outline-none"
+                    placeholder="e.g. exam, notes, assignment"
+                  />
                 </div>
                 <div className="flex gap-3 pt-4">
                   <button
@@ -2387,25 +2408,26 @@ const UserManagement = ({ onBack }) => {
 
   const handleDeleteUser = async (userId) => {
     if (!window.confirm('Are you sure you want to permanently delete this user? This action cannot be undone.')) return;
-    
+
     const token = localStorage.getItem('token');
-    
+
     try {
       const response = await fetch(`${API_BASE_URL}/admin/users/${userId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      
+
       const data = await response.json();
       if (data.success) {
         fetchUsers();
+      } else {
+        alert(data.message || 'Failed to delete user');
       }
     } catch (error) {
       console.error('Error deleting user:', error);
     }
   };
 
-  // ... inside UserManagement component
   const exportToPDF = async () => {
     const dataToExport = filteredUsers;
     if (dataToExport.length === 0) {
@@ -2413,38 +2435,32 @@ const UserManagement = ({ onBack }) => {
       return;
     }
 
-    // Import jsPDF and autoTable
     const { default: jsPDF } = await import('jspdf');
     const { default: autoTable } = await import('jspdf-autotable');
 
     const doc = new jsPDF('landscape');
 
-    // Header: SmartKuppi
     doc.setFontSize(24);
-    doc.setTextColor(79, 70, 229); // Indigo color
+    doc.setTextColor(79, 70, 229);
     doc.setFont('helvetica', 'bold');
     doc.text('SmartKuppi', 14, 20);
 
-    // Title
     doc.setFontSize(16);
     doc.setTextColor(30, 41, 59);
     doc.setFont('helvetica', 'normal');
     doc.text('User Management Report', 14, 35);
 
-    // Generation date/time (right aligned)
     const now = new Date();
     const dateStr = now.toLocaleString();
     doc.setFontSize(9);
     doc.setTextColor(100, 116, 139);
     doc.text(`Generated: ${dateStr}`, doc.internal.pageSize.width - 14, 20, { align: 'right' });
 
-    // Filters info
     let filterText = `Filters: Role: ${roleFilter === 'all' ? 'All' : roleFilter} | Status: ${statusFilter === 'all' ? 'All' : statusFilter}`;
     if (searchTerm) filterText += ` | Search: "${searchTerm}"`;
     doc.setFontSize(9);
     doc.text(filterText, 14, 45);
 
-    // Prepare table data
     const tableHeaders = [['Name', 'Email', 'Role', 'Status', 'Phone', 'Joined Date']];
     const tableRows = dataToExport.map(user => [
       user.name,
@@ -2455,7 +2471,6 @@ const UserManagement = ({ onBack }) => {
       new Date(user.createdAt).toLocaleDateString()
     ]);
 
-    // Add table
     autoTable(doc, {
       head: tableHeaders,
       body: tableRows,
@@ -2486,7 +2501,6 @@ const UserManagement = ({ onBack }) => {
       }
     });
 
-    // Add page numbers
     const pageCount = doc.internal.getNumberOfPages();
     for (let i = 1; i <= pageCount; i++) {
       doc.setPage(i);
@@ -2500,7 +2514,6 @@ const UserManagement = ({ onBack }) => {
       );
     }
 
-    // Save PDF
     doc.save(`users_${now.toISOString().slice(0,19)}.pdf`);
   };
 

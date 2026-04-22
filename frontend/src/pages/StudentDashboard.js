@@ -53,6 +53,7 @@ const StudentDashboard = () => {
   const [activeTab, setActiveTab] = useState('lessons');
   const [conversation, setConversation] = useState(null);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [selectedTagFilter, setSelectedTagFilter] = useState('');
 
   const [announcements, setAnnouncements] = useState([]);
   const [announcementsLoading, setAnnouncementsLoading] = useState(false);
@@ -1389,18 +1390,47 @@ const StudentDashboard = () => {
             {/* Resources Tab */}
             {activeTab === 'resources' && (
               <div className="space-y-4">
-                {resources.length > 0 ? resources.map(res => (
-                  <div key={res._id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between">
-                    <div>
-                      <h4 className="font-bold text-slate-900">{res.title}</h4>
-                      <p className="text-xs text-slate-500">{res.fileType?.toUpperCase() || 'FILE'} • {res.downloads} downloads</p>
+                {/* Tag Filter */}
+                {resources.length > 0 && (
+                  <div className="mb-4">
+                    <label className="block text-xs font-bold text-slate-700 mb-2">Filter by Tag:</label>
+                    <select
+                      value={selectedTagFilter}
+                      onChange={e => setSelectedTagFilter(e.target.value)}
+                      className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm"
+                    >
+                      <option value="">All Tags</option>
+                      {Array.from(new Set(resources.flatMap(r => r.tags || []))).map(tag => (
+                        <option key={tag} value={tag}>{tag}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                {resources.length > 0 ? resources
+                  .filter(res => !selectedTagFilter || (res.tags && res.tags.includes(selectedTagFilter)))
+                  .map(res => (
+                  <div key={res._id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="font-bold text-slate-900">{res.title}</h4>
+                        <p className="text-xs text-slate-500">{res.fileType?.toUpperCase() || 'FILE'} • {res.downloads} downloads</p>
+                      </div>
+                        <button
+                          onClick={() => handleDownload(res._id, res.fileUrl)}
+                          className="p-2 text-slate-400 hover:text-indigo-600 rounded-lg transition-colors"
+                        >
+                          <Download className="h-5 w-5" />
+                        </button>
                     </div>
-                      <button
-                        onClick={() => handleDownload(res._id, res.fileUrl)}
-                        className="p-2 text-slate-400 hover:text-indigo-600 rounded-lg transition-colors"
-                      >
-                        <Download className="h-5 w-5" />
-                      </button>
+                    {res.tags && res.tags.length > 0 && (
+                      <div className="flex gap-2 flex-wrap">
+                        {res.tags.map(tag => (
+                          <span key={tag} className="px-2 py-1 bg-indigo-100 text-indigo-600 text-xs rounded-full font-medium">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )) : <p className="text-slate-500 text-center py-4">No resources yet.</p>}
               </div>
